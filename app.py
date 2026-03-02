@@ -12,426 +12,264 @@ app.secret_key = "dev-secret-change-later"
 
 DB_PATH = "data.db"
 
-# Split padrão
+# Split padrão (Rafa ganha mais)
 LUCAS_SHARE = 0.40
 RAFA_SHARE = 0.60
 
-# Perfis (pagador real sempre é o perfil que fez upload)
 ALLOWED_PROFILES = {"Lucas", "Rafa"}
-
-# Tipos
 ALLOWED_TIPO = {"Saida", "Entrada"}
 
-# Responsabilidade (antigo "Dono")
+# "Responsabilidade" (no seu print ainda vem como "Dono")
 ALLOWED_RESP = {"Casa", "Lucas", "Rafa"}
 
-# Rateio
-ALLOWED_RATEIO = {"60_40", "50_50", "100_meu", "100_outro"}
+# Aceita variações no input, mas o banco guarda sempre canônico com underscore
+RATEIO_CANON = {
+    "60/40": "60_40",
+    "60_40": "60_40",
+    "50/50": "50_50",
+    "50_50": "50_50",
+    "100%_Meu": "100_meu",
+    "100_meu": "100_meu",
+    "100%_Outro": "100_outro",
+    "100_outro": "100_outro",
+}
 
-# Template no repo (você já colocou em assets)
-TEMPLATE_DIR = "assets"
-TEMPLATE_FILENAME = "Template__Finanças__Casella.xlsx"
-TEMPLATE_PATH = os.environ.get("TEMPLATE_PATH", os.path.join(TEMPLATE_DIR, TEMPLATE_FILENAME))
-
-# Colunas aceitas no input
-# Observação: aceitamos "Dono" (legado) ou "Responsabilidade" (novo)
-REQUIRED_COLUMNS_NEW = [
-    "Data",
-    "Estabelecimento",
-    "Categoria",
-    "Valor",
-    "Tipo",
-    "Responsabilidade",
-    "Rateio",
-    "Observacao",
-    "Parcela",
+# Sugestões (não trava)
+SUGGESTED_CATEGORIES = [
+    "Alimentação",
+    "Assinaturas e Serviços Digitais",
+    "Carro",
+    "Combustível",
+    "Compras Online Diversas",
+    "Compras Pessoais",
+    "Contas da Casa",
+    "Pets",
+    "Presentes",
+    "Saúde",
+    "Supermercado e Itens Domésticos",
+    "Mercado",
+    "Itens de Casa",
+    "Transporte",
+    "Viagens e Lazer",
+    "Academia",
+    "Lura",
+    "Outros",
 ]
 
-REQUIRED_COLUMNS_OLD = [
-    "Data",
-    "Estabelecimento",
-    "Categoria",
-    "Valor",
-    "Tipo",
-    "Dono",
-    "Rateio",
-    "Observacao",
-    "Parcela",
+# Fixos (aparecem no topo apenas quando a lista do mês está aberta)
+# Obs: responsabilidade Casa, rateio 60/40, e quem pagou de fato é "uploaded_by" (perfil que importou)
+FIXOS = [
+    {"key": "aluguel", "label": "Aluguel", "valor": 2541.00, "payer": "Rafa", "resp": "Casa", "rateio": "60_40", "categoria": "Contas da Casa"},
+    {"key": "condominio", "label": "Condomínio", "valor": 1374.42, "payer": "Lucas", "resp": "Casa", "rateio": "60_40", "categoria": "Contas da Casa"},
+    {"key": "internet", "label": "Internet", "valor": 115.00, "payer": "Lucas", "resp": "Casa", "rateio": "60_40", "categoria": "Contas da Casa"},
+    {"key": "estacionamento", "label": "Estacionamento Amazon", "valor": 75.00, "payer": "Rafa", "resp": "Casa", "rateio": "60_40", "categoria": "Transporte"},
 ]
 
-# ---------- UI / CSS ----------
+# Variáveis "sempre aparecem", mas ficam como pendentes até você preencher manualmente
+PENDENTES = [
+    {"key": "luz", "label": "Luz", "categoria": "Contas da Casa"},
+    {"key": "gas", "label": "Gás", "categoria": "Contas da Casa"},
+    {"key": "empregada", "label": "Empregada", "categoria": "Contas da Casa"},
+]
+
 BASE_CSS = """
 <style>
   :root{
-    --bg0:#f7f8fb;
+    --bg1:#f7f8ff;
+    --bg2:#f6fffb;
     --card:#ffffff;
-    --text:#101828;
-    --muted:#667085;
-    --border:#eaecf0;
-    --shadow: 0 14px 40px rgba(16,24,40,.08);
-    --shadow2: 0 6px 18px rgba(16,24,40,.08);
+    --text:#0f172a;
+    --muted:#64748b;
+    --border: rgba(15,23,42,.08);
+    --shadow: 0 14px 40px rgba(15,23,42,.08);
     --radius: 18px;
-
-    /* Default (Lucas) */
-    --p1:#2563eb;
-    --p2:#1e40af;
-    --pSoft: rgba(37,99,235,.10);
-    --pSoft2: rgba(30,64,175,.10);
-    --chipBg: rgba(16,24,40,.06);
+    --lucas1:#1d4ed8;
+    --lucas2:#60a5fa;
+    --rafa1:#16a34a;
+    --rafa2:#86efac;
+    --neutral1:#111827;
+    --neutral2:#94a3b8;
   }
 
+  *{box-sizing:border-box}
   body{
     margin:0;
     font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif;
-    background: radial-gradient(1200px 600px at 15% 10%, rgba(37,99,235,.14), transparent 60%),
-                radial-gradient(900px 500px at 85% 0%, rgba(34,197,94,.10), transparent 55%),
-                radial-gradient(1200px 800px at 70% 100%, rgba(168,85,247,.10), transparent 60%),
-                var(--bg0);
-    color: var(--text);
-  }
-
-  .wrap{
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 18px;
+    color:var(--text);
+    background: radial-gradient(1200px 600px at 20% 0%, var(--bg1) 0%, rgba(255,255,255,0) 60%),
+                radial-gradient(1200px 600px at 80% 0%, var(--bg2) 0%, rgba(255,255,255,0) 60%),
+                linear-gradient(180deg, #ffffff 0%, #fbfbff 100%);
+    min-height:100vh;
   }
 
   .topbar{
     position: sticky;
     top:0;
-    z-index: 30;
+    z-index:5;
     backdrop-filter: blur(10px);
-    background: rgba(247,248,251,.78);
+    background: rgba(255,255,255,.7);
     border-bottom: 1px solid var(--border);
   }
 
-  .topbarInner{
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 12px 18px;
-    display:flex;
-    gap: 12px;
-    align-items:center;
-    justify-content: space-between;
-  }
-
-  .brand{
-    display:flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 220px;
-  }
-
-  .brand b{
-    font-size: 14px;
-    letter-spacing: .2px;
-  }
-
+  .wrap{max-width:1100px; margin:0 auto; padding: 16px;}
+  .row{display:flex; gap:12px; align-items:center; flex-wrap:wrap;}
+  .space{justify-content:space-between;}
   .pill{
     display:inline-flex;
     align-items:center;
-    gap: 8px;
-    font-size: 12px;
-    padding: 6px 10px;
-    border-radius: 999px;
-    background: var(--chipBg);
-    color: var(--text);
-    border: 1px solid rgba(16,24,40,.06);
+    gap:8px;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    background: rgba(255,255,255,.7);
+    font-size:12px;
+    color:var(--muted);
   }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .dot{
+    width:10px; height:10px; border-radius:999px;
+    background: linear-gradient(135deg, var(--neutral1), var(--neutral2));
+    box-shadow: 0 0 0 4px rgba(15,23,42,.06);
+  }
+  .dot.lucas{background: linear-gradient(135deg, var(--lucas1), var(--lucas2));}
+  .dot.rafa{background: linear-gradient(135deg, var(--rafa1), var(--rafa2));}
 
   .nav{
     display:flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    gap:10px;
+    flex-wrap:wrap;
   }
 
   .btn{
+    appearance:none;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,.8);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-weight: 800;
+    cursor:pointer;
+    text-decoration:none;
     display:inline-flex;
     align-items:center;
     justify-content:center;
-    gap: 10px;
-    padding: 10px 14px;
-    border-radius: 14px;
-    border: 1px solid var(--border);
-    background: rgba(255,255,255,.72);
-    color: var(--text);
-    text-decoration:none;
-    font-weight: 800;
-    cursor:pointer;
-    box-shadow: var(--shadow2);
+    gap:8px;
+    transition: transform .06s ease, box-shadow .12s ease, border-color .12s ease;
   }
-  .btn:hover{
-    transform: translateY(-1px);
-    box-shadow: 0 10px 22px rgba(16,24,40,.10);
-  }
+  .btn:hover{border-color: rgba(15,23,42,.20); box-shadow: 0 10px 22px rgba(15,23,42,.08);}
+  .btn:active{transform: translateY(1px);}
 
   .btnPrimary{
-    border: 1px solid rgba(255,255,255,.20);
-    color: #fff;
-    background: linear-gradient(135deg, var(--p1), var(--p2));
-    box-shadow: 0 16px 38px rgba(37,99,235,.22);
+    border:0;
+    color:white;
+    box-shadow: 0 16px 32px rgba(29,78,216,.18);
+    background: linear-gradient(135deg, var(--neutral1), var(--neutral2));
   }
+  .btnLucas{ background: linear-gradient(135deg, var(--lucas1), var(--lucas2)); box-shadow: 0 16px 32px rgba(29,78,216,.18); }
+  .btnRafa{ background: linear-gradient(135deg, var(--rafa1), var(--rafa2)); box-shadow: 0 16px 32px rgba(22,163,74,.18); }
 
-  .btnSoft{
-    border: 1px solid rgba(16,24,40,.08);
-    background: linear-gradient(135deg, var(--pSoft), rgba(255,255,255,.70));
+  .btnGhost{
+    background: rgba(255,255,255,.55);
   }
 
   .btnDanger{
-    border: 1px solid rgba(255,255,255,.20);
-    color:#fff;
-    background: linear-gradient(135deg, #d92d20, #b42318);
-    box-shadow: 0 14px 34px rgba(217,45,32,.18);
+    border:0;
+    color:white;
+    background: linear-gradient(135deg, #b91c1c, #fb7185);
   }
 
   .card{
-    background: rgba(255,255,255,.82);
+    background: rgba(255,255,255,.85);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 18px;
-    margin-top: 14px;
+    padding: 16px;
     box-shadow: var(--shadow);
+    margin-top: 14px;
   }
 
-  h1,h2,h3{
-    margin: 0 0 10px;
-    letter-spacing: -0.2px;
-  }
+  h1,h2,h3{margin:0 0 10px;}
+  p{margin:0 0 10px; color: var(--muted);}
 
-  p{
-    margin: 0 0 10px;
-    color: var(--muted);
-  }
-
-  label{
-    font-weight: 900;
-    display:block;
-    margin-top: 10px;
-    margin-bottom: 6px;
-    color: var(--text);
-  }
-
+  label{font-weight:800; display:block; margin: 10px 0 6px;}
   input[type="text"], input[type="number"], input[type="file"], input[type="date"], select, textarea{
-    width: 100%;
-    padding: 11px 12px;
-    border: 1px solid var(--border);
+    width:100%;
+    padding: 10px 12px;
     border-radius: 14px;
-    background: rgba(255,255,255,.90);
-    color: var(--text);
-    outline: none;
+    border:1px solid var(--border);
+    background: rgba(255,255,255,.9);
+    outline:none;
   }
-  input:focus, select:focus, textarea:focus{
-    border-color: rgba(37,99,235,.45);
-    box-shadow: 0 0 0 4px rgba(37,99,235,.12);
+  textarea{min-height:90px; resize:vertical;}
+
+  .grid2{display:grid; grid-template-columns: 1fr 1fr; gap:12px;}
+  .grid3{display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px;}
+  .grid4{display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:12px;}
+
+  .kpi{display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:12px;}
+  .kpi .box{
+    border:1px solid var(--border);
+    border-radius: 16px;
+    background: rgba(255,255,255,.85);
+    padding: 12px;
   }
+  .kpi .label{font-size:12px; color: var(--muted); margin-bottom:6px;}
+  .kpi .value{font-size:20px; font-weight:900;}
 
-  textarea{
-    min-height: 90px;
-    resize: vertical;
-  }
-
-  .grid2{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .grid3{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-  .grid4{ display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
-
-  .row{ display:flex; gap: 10px; flex-wrap: wrap; align-items:center; justify-content: space-between; }
-
-  .muted{ color: var(--muted); font-size: 12px; }
-  .small{ font-size: 12px; }
-  .right{ text-align: right; }
-  .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  .right{text-align:right}
+  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+  .small{font-size:12px; color: var(--muted);}
 
   .okBox{
-    border: 1px solid rgba(34,197,94,.25);
-    background: rgba(34,197,94,.08);
+    border:1px solid rgba(22,163,74,.25);
+    background: rgba(22,163,74,.06);
     padding: 12px;
     border-radius: 14px;
-    color: var(--text);
   }
-
   .errorBox{
-    border: 1px solid rgba(217,45,32,.25);
-    background: rgba(217,45,32,.08);
+    border:1px solid rgba(185,28,28,.25);
+    background: rgba(185,28,28,.06);
     padding: 12px;
     border-radius: 14px;
-    color: var(--text);
   }
 
-  table{
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 10px;
-    background: rgba(255,255,255,.65);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    overflow: hidden;
-  }
-  th, td{
-    border-bottom: 1px solid var(--border);
-    padding: 10px 10px;
-    text-align: left;
-    font-size: 13px;
-    vertical-align: top;
-  }
-  th{
-    background: rgba(16,24,40,.04);
-    font-weight: 900;
-  }
-  tr:hover td{
-    background: rgba(16,24,40,.02);
-  }
-
-  .kpi{
-    display:grid;
-    grid-template-columns: 1fr 1fr 1fr 1fr;
-    gap: 12px;
-  }
-  .kpi .box{
-    background: rgba(255,255,255,.78);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px;
-    box-shadow: var(--shadow2);
-  }
-  .kpi .label{
-    font-size: 12px;
-    color: var(--muted);
-    margin-bottom: 6px;
-    font-weight: 800;
-  }
-  .kpi .value{
-    font-size: 20px;
-    font-weight: 1000;
-    letter-spacing: -0.4px;
-  }
-
-  .tabs{
-    display:flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-top: 10px;
-  }
-  .tab{
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 10px 14px;
-    background: rgba(255,255,255,.72);
-    font-weight: 900;
-    cursor: pointer;
-    text-decoration: none;
-    color: var(--text);
-    box-shadow: var(--shadow2);
-  }
-  .tabActive{
-    background: linear-gradient(135deg, var(--pSoft), rgba(255,255,255,.72));
-    border-color: rgba(37,99,235,.35);
-  }
-
+  table{width:100%; border-collapse: collapse; margin-top:10px;}
+  th,td{border-bottom:1px solid rgba(15,23,42,.06); padding: 10px 8px; vertical-align: top; font-size:13px;}
+  th{color:#334155; background: rgba(248,250,252,.8); position: sticky; top: 58px; z-index:2;}
   details{
-    border: 1px solid var(--border);
+    border: 1px solid rgba(15,23,42,.06);
+    background: rgba(255,255,255,.65);
     border-radius: 14px;
     padding: 10px 12px;
-    background: rgba(255,255,255,.72);
-    box-shadow: var(--shadow2);
+    margin-top: 10px;
   }
-  details summary{
-    cursor: pointer;
-    font-weight: 1000;
-    color: var(--text);
+  summary{cursor:pointer; font-weight:900;}
+  .tag{
+    display:inline-flex; gap:8px; align-items:center;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid rgba(15,23,42,.08);
+    background: rgba(255,255,255,.6);
+    font-size:12px;
+    color: #334155;
   }
 
-  .loginWrap{
-    min-height: calc(100vh - 72px);
-    display:flex;
-    align-items: center;
-  }
-  .loginCard{
-    width: 100%;
-    max-width: 780px;
-    margin: 0 auto;
-    padding: 20px;
-  }
-  .bigBtns{
-    display:grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-    margin-top: 14px;
-  }
-  .bigBtn{
-    display:flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 18px;
-    border-radius: 18px;
-    border: 1px solid rgba(255,255,255,.24);
-    color:#fff;
-    text-decoration:none;
-    font-weight: 1000;
-    box-shadow: 0 18px 44px rgba(16,24,40,.16);
-    transition: transform .08s ease;
-  }
-  .bigBtn:hover{
-    transform: translateY(-2px);
-  }
-  .bigBtn .t{
-    font-size: 18px;
-    letter-spacing: -0.3px;
-  }
-  .bigBtn .s{
-    font-size: 12px;
-    opacity: .92;
-    font-weight: 800;
-  }
-  .lucasGrad{ background: linear-gradient(135deg, #2563eb, #1e40af); }
-  .rafaGrad{ background: linear-gradient(135deg, #22c55e, #15803d); }
-
-  @media (max-width: 980px){
-    .kpi{ grid-template-columns: 1fr 1fr; }
-    .brand{ min-width: auto; }
-  }
-  @media (max-width: 820px){
-    .grid4{ grid-template-columns: 1fr; }
-    .grid3{ grid-template-columns: 1fr; }
-    .grid2{ grid-template-columns: 1fr; }
-    .kpi{ grid-template-columns: 1fr; }
-    .bigBtns{ grid-template-columns: 1fr; }
-    .topbarInner{ flex-direction: column; align-items: flex-start; }
-    .nav{ justify-content: flex-start; }
+  @media (max-width: 900px){
+    .grid4,.grid3,.grid2,.kpi{grid-template-columns: 1fr;}
+    th{top: 118px;}
   }
 </style>
 """
 
-def profile_theme_vars(profile: str) -> str:
-    # Lucas azul, Rafa verde
-    if profile == "Rafa":
-        return """
-        <style>
-          :root{
-            --p1:#22c55e;
-            --p2:#15803d;
-            --pSoft: rgba(34,197,94,.12);
-            --pSoft2: rgba(21,128,61,.10);
-          }
-        </style>
-        """
-    return """
-    <style>
-      :root{
-        --p1:#2563eb;
-        --p2:#1e40af;
-        --pSoft: rgba(37,99,235,.12);
-        --pSoft2: rgba(30,64,175,.10);
-      }
-    </style>
-    """
-
-# ---------- Helpers ----------
 def brl(x: float) -> str:
-    if x is None:
+    try:
+        x = float(x or 0)
+    except:
         x = 0.0
-    s = f"{x:,.2f}"
-    s = s.replace(",", "X").replace(".", ",").replace("X", ".")
+    s = f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"R$ {s}"
 
 def pct(x: float) -> str:
@@ -494,8 +332,8 @@ def init_db():
       categoria TEXT,
       valor REAL NOT NULL,
       tipo TEXT NOT NULL,
-      dono TEXT NOT NULL,
-      rateio TEXT NOT NULL,
+      dono TEXT NOT NULL,     -- aqui é "Responsabilidade"
+      rateio TEXT NOT NULL,   -- canônico: 60_40, 50_50, 100_meu, 100_outro
       observacao TEXT,
       parcela TEXT,
       created_at TEXT NOT NULL
@@ -529,136 +367,178 @@ def init_db():
     )
     """)
 
+    # trava de mês por perfil (fechar mês)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS month_locks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      month_ref TEXT NOT NULL,
+      profile TEXT NOT NULL,
+      locked INTEGER NOT NULL DEFAULT 0,
+      locked_at TEXT,
+      UNIQUE(month_ref, profile)
+    )
+    """)
+
     conn.commit()
     conn.close()
 
 init_db()
 
-def topbar_html(profile: str):
+def profile_dot(profile: str) -> str:
+    if profile == "Lucas":
+        return "lucas"
+    if profile == "Rafa":
+        return "rafa"
+    return ""
+
+def topbar_html(profile: str, active: str = "overview"):
     if not profile:
-        return """
+        return f"""
         <div class="topbar">
-          <div class="topbarInner">
-            <div class="brand">
-              <b>Finanças da Casa</b>
-              <span class="muted">Selecione um perfil</span>
+          <div class="wrap">
+            <div class="row space">
+              <div class="brand">
+                <span class="dot"></span>
+                <b>Casella</b>
+              </div>
             </div>
           </div>
         </div>
         """
 
+    def nav_btn(label, endpoint, key):
+        klass = "btn btnPrimary" if key == active else "btn btnGhost"
+        return f"<a class='{klass}' href='{endpoint}'>{label}</a>"
+
     nav = f"""
-      <div class="nav">
-        <a class="btn btnSoft" href="{url_for('overview')}">Overview</a>
-        <a class="btn btnSoft" href="{url_for('entrada')}">Entradas</a>
-        <a class="btn btnSoft" href="{url_for('saidas')}">Saidas</a>
-        <a class="btn btnSoft" href="{url_for('perfil')}">Perfil</a>
-      </div>
+    <div class="nav">
+      {nav_btn("Overview", url_for("overview"), "overview")}
+      {nav_btn("Entradas", url_for("entradas"), "entradas")}
+      {nav_btn("Saídas", url_for("saidas"), "saidas")}
+      {nav_btn("Perfil", url_for("perfil"), "perfil")}
+    </div>
     """
 
     return f"""
     <div class="topbar">
-      <div class="topbarInner">
-        <div class="brand">
-          <b>Finanças da Casa</b>
-          <span class="pill">Perfil <b>{profile}</b></span>
+      <div class="wrap">
+        <div class="row space">
+          <div class="brand">
+            <span class="dot {profile_dot(profile)}"></span>
+            <div>
+              <b>Casella</b><br/>
+              <span class="small">Perfil: <b>{profile}</b></span>
+            </div>
+          </div>
+          {nav}
         </div>
-        {nav}
       </div>
     </div>
-    """
-
-def signed_value(tipo: str, valor: float) -> float:
-    if tipo == "Entrada":
-        return -abs(valor)
-    return abs(valor)
-
-def share_for(profile: str, rateio: str) -> float:
-    if rateio == "50_50":
-        return 0.5
-    if rateio == "60_40":
-        return LUCAS_SHARE if profile == "Lucas" else RAFA_SHARE
-    return 0.0
-
-def year_month_select_html(selected_year: str, selected_month: str):
-    year_options = "".join([
-        f"<option value='{y}' {'selected' if str(y)==str(selected_year) else ''}>{y}</option>"
-        for y in range(2024, 2031)
-    ])
-    month_options = "".join([
-        f"<option value='{m:02d}' {'selected' if f'{m:02d}'==str(selected_month) else ''}>{m:02d}</option>"
-        for m in range(1, 13)
-    ])
-    return year_options, month_options
-
-def month_selector_block(selected_year: str, selected_month: str, action_url: str):
-    year_options, month_options = year_month_select_html(selected_year, selected_month)
-    month_ref = month_ref_from(selected_year, selected_month)
-    # Sem botão Atualizar, submit automático
-    return f"""
-      <form id="monthForm" method="get" action="{action_url}">
-        <div class="grid2">
-          <div>
-            <label>Ano</label>
-            <select name="Ano" onchange="document.getElementById('monthForm').submit()">{year_options}</select>
-          </div>
-          <div>
-            <label>Mes</label>
-            <select name="Mes" onchange="document.getElementById('monthForm').submit()">{month_options}</select>
-          </div>
-        </div>
-        <p class="muted" style="margin-top:10px;">Mes de referencia <b>{month_ref}</b></p>
-      </form>
     """
 
 def compute_file_hash(raw_bytes: bytes) -> str:
     return hashlib.sha256(raw_bytes).hexdigest()
 
-def _safe_to_str_date(v) -> str:
-    # Aceita qualquer formato, inclusive date/datetime
-    if pd.isna(v):
-        return ""
-    if isinstance(v, (dt.date, dt.datetime)):
-        return v.strftime("%d/%m/%Y")
-    return str(v).strip()
+# ------------ IMPORT FLEXÍVEL (suporta seu input do print) ------------
 
-def read_excel_from_bytes(raw: bytes) -> tuple[pd.DataFrame, list[str]]:
+_CANON = {
+    "data": "Data",
+    "dono": "Dono",
+    "responsabilidade": "Dono",
+    "categoria": "Categoria",
+    "descrição": "Descricao",
+    "descricao": "Descricao",
+    "estabelecimento": "Estabelecimento",
+    "valor": "Valor",
+    "rateio": "Rateio",
+    "tipo": "Tipo",
+    "observacao": "Observacao",
+    "observação": "Observacao",
+    "parcela": "Parcela",
+}
+
+def _canon_col(c: str) -> str:
+    c = _normalize_str(c)
+    key = c.lower()
+    return _CANON.get(key, c)
+
+def _parse_money(v) -> float:
+    """
+    Aceita número/moeda do Excel, com/sem R$, com ponto/vírgula, negativo/positivo.
+    """
+    if v is None:
+        return 0.0
+    try:
+        if pd.isna(v):
+            return 0.0
+    except:
+        pass
+
+    s = str(v).strip()
+    s = s.replace("R$", "").replace("\u00a0", " ").strip()
+    s = s.replace(" ", "")
+
+    # Se tiver ambos, assume "." milhar e "," decimal
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        # se só vírgula, vira decimal
+        if "," in s and "." not in s:
+            s = s.replace(",", ".")
+
+    try:
+        return float(s)
+    except:
+        return 0.0
+
+def _canon_rateio(x: str) -> str:
+    x = _normalize_str(x)
+    if x in RATEIO_CANON:
+        return RATEIO_CANON[x]
+    return x  # deixa passar para erro de validação, se for algo desconhecido
+
+def read_excel_from_bytes(raw: bytes) -> pd.DataFrame:
     buf = io.BytesIO(raw)
+
+    # por padrão pega a primeira aba
     df = pd.read_excel(buf, engine="openpyxl")
-
-    # Identificar qual set de colunas está vindo
-    cols = set([str(c).strip() for c in df.columns])
-    use_new = all(c in cols for c in REQUIRED_COLUMNS_NEW)
-    use_old = all(c in cols for c in REQUIRED_COLUMNS_OLD)
-
-    if not use_new and not use_old:
-        raise ValueError(
-            "Colunas faltando. Use as colunas: "
-            + ", ".join(REQUIRED_COLUMNS_NEW)
-            + " (ou legado: "
-            + ", ".join(REQUIRED_COLUMNS_OLD)
-            + ")"
-        )
-
-    # Normalização e compat
     df = df.copy()
-    if use_old and "Responsabilidade" not in df.columns and "Dono" in df.columns:
-        df["Responsabilidade"] = df["Dono"]
 
-    # Garante que as colunas esperadas existam
-    missing = [c for c in REQUIRED_COLUMNS_NEW if c not in df.columns]
-    if missing:
-        raise ValueError("Colunas faltando: " + ", ".join(missing))
+    # normaliza os headers se existirem
+    df.columns = [_canon_col(c) for c in df.columns]
 
-    for col in ["Estabelecimento", "Categoria", "Tipo", "Responsabilidade", "Rateio", "Observacao", "Parcela"]:
-        df[col] = df[col].apply(_normalize_str)
+    # MODO CURTO: ordem do print (Data, Dono, Categoria, Descricao, Valor, Rateio)
+    # Importante: você pediu para não travar header; então a regra é: se tiver 6+ colunas,
+    # pegamos as 6 primeiras por posição e forçamos essa ordem.
+    if len(df.columns) >= 6:
+        df_short = df.iloc[:, :6].copy()
+        df_short.columns = ["Data", "Dono", "Categoria", "Descricao", "Valor", "Rateio"]
 
-    df["Data"] = df["Data"].apply(_safe_to_str_date)
-    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce")
+        # Data: sem validação de formato
+        df_short["Data"] = df_short["Data"].apply(lambda v: "" if pd.isna(v) else str(v))
 
-    warnings = []
-    # Não validamos Data nem Categoria, apenas suavizamos problemas comuns
-    return df, warnings
+        # Valor
+        df_short["Valor"] = df_short["Valor"].apply(_parse_money)
+
+        # Tipo inferido pelo sinal
+        df_short["Tipo"] = df_short["Valor"].apply(lambda x: "Entrada" if float(x or 0) < 0 else "Saida")
+        df_short["Valor"] = df_short["Valor"].apply(lambda x: abs(float(x or 0)))
+
+        # Estabelecimento é a descrição
+        df_short["Estabelecimento"] = df_short["Descricao"].apply(_normalize_str)
+
+        # Observacao / Parcela vazios
+        df_short["Observacao"] = ""
+        df_short["Parcela"] = ""
+
+        # strings
+        df_short["Dono"] = df_short["Dono"].apply(_normalize_str)
+        df_short["Categoria"] = df_short["Categoria"].apply(_normalize_str)
+        df_short["Rateio"] = df_short["Rateio"].apply(_normalize_str)
+
+        return df_short
+
+    raise ValueError("Arquivo inválido: precisa ter pelo menos 6 colunas (Data, Dono, Categoria, Descrição, Valor, Rateio)")
 
 def validate_transactions(df: pd.DataFrame):
     errors = []
@@ -667,46 +547,53 @@ def validate_transactions(df: pd.DataFrame):
     for idx, row in df.iterrows():
         line_number = idx + 2
 
-        tipo = row["Tipo"]
-        resp = row["Responsabilidade"]
-        rateio = row["Rateio"]
-        valor = row["Valor"]
+        tipo = _normalize_str(row.get("Tipo"))
+        resp = _normalize_str(row.get("Dono"))  # responsabilidade
+        rateio_raw = _normalize_str(row.get("Rateio"))
+        rateio = _canon_rateio(rateio_raw)
 
-        if pd.isna(valor) or float(valor) <= 0:
-            errors.append(f"Linha {line_number}: Valor invalido, precisa ser maior que 0")
+        valor = row.get("Valor")
+        try:
+            valor_f = float(valor)
+        except:
+            valor_f = 0.0
+
+        if valor_f <= 0:
+            errors.append(f"Linha {line_number}: Valor inválido, precisa ser maior que 0")
 
         if tipo not in ALLOWED_TIPO:
-            errors.append(f"Linha {line_number}: Tipo invalido, use Saida ou Entrada")
+            errors.append(f"Linha {line_number}: Tipo inválido, use Saida ou Entrada")
 
         if resp not in ALLOWED_RESP:
-            errors.append(f"Linha {line_number}: Responsabilidade invalida, use Casa, Lucas ou Rafa")
+            errors.append(f"Linha {line_number}: Responsabilidade inválida, use Casa, Lucas ou Rafa")
 
-        if rateio not in ALLOWED_RATEIO:
-            errors.append(f"Linha {line_number}: Rateio invalido, use 60_40, 50_50, 100_meu ou 100_outro")
+        if rateio not in {"60_40", "50_50", "100_meu", "100_outro"}:
+            errors.append(f"Linha {line_number}: Rateio inválido (use 60/40, 50/50, 100%_Meu ou 100%_Outro)")
 
-        # Regra: se Responsabilidade é Casa, rateio só pode ser 60_40 ou 50_50
+        # regras de coerência
         if resp == "Casa" and rateio not in {"60_40", "50_50"}:
-            errors.append(f"Linha {line_number}: Responsabilidade Casa exige rateio 60_40 ou 50_50")
+            errors.append(f"Linha {line_number}: Responsabilidade Casa só permite rateio 60/40 ou 50/50")
 
-        # Regra: se Responsabilidade não é Casa, rateio não pode ser 60_40 ou 50_50
-        if resp != "Casa" and rateio in {"60_40", "50_50"}:
-            errors.append(f"Linha {line_number}: Rateio {rateio} exige Responsabilidade Casa")
+        if resp in {"Lucas", "Rafa"} and rateio in {"60_40", "50_50"}:
+            errors.append(f"Linha {line_number}: Rateio 60/40 ou 50/50 exige Responsabilidade Casa")
 
         normalized_rows.append(
             {
-                "Data": row.get("Data", ""),
-                "Estabelecimento": row.get("Estabelecimento", ""),
-                "Categoria": row.get("Categoria", ""),
-                "Valor": None if pd.isna(valor) else float(valor),
+                "Data": _normalize_str(row.get("Data")),
+                "Estabelecimento": _normalize_str(row.get("Estabelecimento")),
+                "Categoria": _normalize_str(row.get("Categoria")),
+                "Valor": valor_f,
                 "Tipo": tipo,
-                "Responsabilidade": resp,
+                "Dono": resp,
                 "Rateio": rateio,
-                "Observacao": row.get("Observacao", ""),
-                "Parcela": row.get("Parcela", ""),
+                "Observacao": _normalize_str(row.get("Observacao")),
+                "Parcela": _normalize_str(row.get("Parcela")),
             }
         )
 
     return errors, normalized_rows
+
+# ------------ DB HELPERS ------------
 
 def _insert_import(conn, batch_id, month_ref, uploaded_by, filename, row_count, status, created_at, file_hash, source):
     cur = conn.cursor()
@@ -716,7 +603,6 @@ def _insert_import(conn, batch_id, month_ref, uploaded_by, filename, row_count, 
     """, (batch_id, month_ref, uploaded_by, filename, row_count, status, created_at, file_hash, source))
 
 def _insert_transaction(conn, batch_id, month_ref, uploaded_by, r, created_at):
-    # DB usa coluna "dono" mas aqui significa Responsabilidade
     cur = conn.cursor()
     cur.execute("""
       INSERT INTO transactions
@@ -731,7 +617,7 @@ def _insert_transaction(conn, batch_id, month_ref, uploaded_by, r, created_at):
         r.get("Categoria", ""),
         float(r.get("Valor") or 0),
         r.get("Tipo", ""),
-        r.get("Responsabilidade", ""),
+        r.get("Dono", ""),
         r.get("Rateio", ""),
         r.get("Observacao", ""),
         r.get("Parcela", ""),
@@ -754,7 +640,7 @@ def is_duplicate_import(month_ref: str, uploaded_by: str, file_hash: str) -> boo
     conn.close()
     return hit
 
-def create_preview_batch(month_ref: str, uploaded_by: str, filename: str, rows: list[dict], file_hash: str) -> str:
+def create_preview_batch(month_ref: str, uploaded_by: str, filename: str, rows: list, file_hash: str) -> str:
     batch_id = uuid.uuid4().hex
     now = dt.datetime.utcnow().isoformat(timespec="seconds")
 
@@ -775,20 +661,20 @@ def finalize_import(batch_id: str, profile: str) -> tuple[bool, str]:
     imp = cur.fetchone()
     if not imp:
         conn.close()
-        return False, "Importacao nao encontrada"
+        return False, "Importação não encontrada"
 
     if imp["uploaded_by"] != profile:
         conn.close()
-        return False, "Voce so pode importar batches criados no seu perfil"
+        return False, "Você só pode importar batches criados no seu perfil"
 
     if imp["status"] == "imported":
         conn.close()
-        return False, "Esse batch ja foi importado"
+        return False, "Esse batch já foi importado"
 
     cur.execute("UPDATE imports SET status = 'imported' WHERE batch_id = ?", (batch_id,))
     conn.commit()
     conn.close()
-    return True, "Importacao concluida"
+    return True, "Importação concluída"
 
 def delete_batch(batch_id: str, profile: str) -> tuple[bool, str]:
     conn = get_db()
@@ -798,17 +684,17 @@ def delete_batch(batch_id: str, profile: str) -> tuple[bool, str]:
     imp = cur.fetchone()
     if not imp:
         conn.close()
-        return False, "Importacao nao encontrada"
+        return False, "Importação não encontrada"
 
     if imp["uploaded_by"] != profile:
         conn.close()
-        return False, "Voce so pode excluir imports feitos no seu perfil"
+        return False, "Você só pode excluir imports feitos no seu perfil"
 
     cur.execute("DELETE FROM transactions WHERE batch_id = ?", (batch_id,))
     cur.execute("DELETE FROM imports WHERE batch_id = ?", (batch_id,))
     conn.commit()
     conn.close()
-    return True, "Importacao excluida"
+    return True, "Importação excluída"
 
 def fetch_imported_transactions(month_ref: str):
     conn = get_db()
@@ -842,6 +728,19 @@ def fetch_house_transactions(month_ref: str):
     conn.close()
     return rows
 
+def signed_value(tipo: str, valor: float) -> float:
+    # Entrada reduz gasto (reembolso)
+    if tipo == "Entrada":
+        return -abs(valor)
+    return abs(valor)
+
+def share_for(profile: str, rateio: str) -> float:
+    if rateio == "50_50":
+        return 0.5
+    if rateio == "60_40":
+        return LUCAS_SHARE if profile == "Lucas" else RAFA_SHARE
+    return 0.0
+
 def compute_casa(month_ref: str):
     rows = fetch_house_transactions(month_ref)
 
@@ -850,7 +749,6 @@ def compute_casa(month_ref: str):
     paid_rafa = 0.0
     expected_lucas = 0.0
     expected_rafa = 0.0
-
     by_category = {}
 
     for r in rows:
@@ -859,10 +757,11 @@ def compute_casa(month_ref: str):
 
         cat = r["categoria"] or "Sem categoria"
         if cat not in by_category:
-            by_category[cat] = {"total": 0.0, "lucas": 0.0, "rafa": 0.0}
+            by_category[cat] = {"total": 0.0, "lucas": 0.0, "rafa": 0.0, "items": []}
         by_category[cat]["total"] += val
+        by_category[cat]["items"].append(r)
 
-        # Pagador real é quem fez upload do batch (uploaded_by)
+        # "quem pagou de fato" é uploaded_by
         if r["uploaded_by"] == "Lucas":
             paid_lucas += val
             by_category[cat]["lucas"] += val
@@ -880,9 +779,8 @@ def compute_casa(month_ref: str):
     lucas_diff = paid_lucas - expected_lucas
     rafa_diff = paid_rafa - expected_rafa
 
-    settlement_text = "Sem acerto necessario"
+    settlement_text = "Sem acerto necessário"
     settlement_value = 0.0
-
     if lucas_diff > 0.01:
         settlement_text = "Rafa deve passar para Lucas"
         settlement_value = lucas_diff
@@ -901,7 +799,6 @@ def compute_casa(month_ref: str):
         "settlement_text": settlement_text,
         "settlement_value": settlement_value,
         "cats_sorted": cats_sorted,
-        "rows": rows,
     }
 
 def get_income(month_ref: str, profile: str):
@@ -997,7 +894,7 @@ def compute_individual(month_ref: str, profile: str):
         val = signed_value(r["tipo"], r["valor"])
         cat = r["categoria"] or "Sem categoria"
 
-        # Casa: Responsabilidade Casa, rateio 60_40 ou 50_50
+        # Responsabilidade Casa: entra no split
         if r["dono"] == "Casa" and r["rateio"] in ("60_40", "50_50"):
             sh = share_for(profile, r["rateio"])
             part = val * sh
@@ -1005,18 +902,18 @@ def compute_individual(month_ref: str, profile: str):
             house_by_cat[cat] = house_by_cat.get(cat, 0.0) + part
             continue
 
-        # Pessoal: responsabilidade do próprio profile e import feito por ele com 100_meu
+        # Responsabilidade do próprio profile e rateio 100_meu
         if r["rateio"] == "100_meu" and r["uploaded_by"] == profile and r["dono"] == profile:
             my_personal_total += val
             my_personal_by_cat[cat] = my_personal_by_cat.get(cat, 0.0) + val
             continue
 
-        # Receber do outro: eu paguei e marquei como 100_outro para responsabilidade do outro
+        # 100_outro: fiz para o outro (eu paguei algo que era do outro)
         if r["rateio"] == "100_outro" and r["uploaded_by"] == profile and r["dono"] != "Casa" and r["dono"] != profile:
             receivable_total += val
             continue
 
-        # Pagar para o outro: outro pagou e marcou como 100_outro e responsabilidade é minha
+        # 100_outro: o outro pagou algo que era meu (eu devo)
         if r["rateio"] == "100_outro" and r["uploaded_by"] != profile and r["dono"] == profile:
             payable_total += val
             continue
@@ -1050,7 +947,6 @@ def compute_individual(month_ref: str, profile: str):
         "saldo_em_conta": saldo_em_conta,
         "cats_house": cats_house,
         "cats_personal": cats_personal,
-        "rows": rows,
     }
 
 def create_manual_batch(month_ref: str, uploaded_by: str, row: dict) -> str:
@@ -1065,97 +961,94 @@ def create_manual_batch(month_ref: str, uploaded_by: str, row: dict) -> str:
     conn.close()
     return batch_id
 
-def get_transaction(tx_id: int):
+def get_lock(month_ref: str, profile: str) -> bool:
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("""
-      SELECT t.*, i.source, i.status, i.filename
-      FROM transactions t
-      JOIN imports i ON i.batch_id = t.batch_id
-      WHERE t.id = ?
-      LIMIT 1
-    """, (tx_id,))
+    cur.execute("SELECT locked FROM month_locks WHERE month_ref = ? AND profile = ?", (month_ref, profile))
     row = cur.fetchone()
     conn.close()
-    return row
+    if not row:
+        return False
+    return int(row["locked"] or 0) == 1
 
-def delete_transaction_any(tx_id: int, profile: str) -> tuple[bool, str]:
-    tx = get_transaction(tx_id)
-    if not tx:
-        return False, "Lancamento nao encontrado"
-    if tx["uploaded_by"] != profile:
-        return False, "Voce so pode excluir lancamentos do seu perfil"
-
-    batch_id = tx["batch_id"]
-
+def set_lock(month_ref: str, profile: str, locked: bool):
+    now = dt.datetime.utcnow().isoformat(timespec="seconds")
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
-
-    cur.execute("SELECT COUNT(*) as c FROM transactions WHERE batch_id = ?", (batch_id,))
-    c = int(cur.fetchone()["c"])
-    if c == 0:
-        cur.execute("DELETE FROM imports WHERE batch_id = ?", (batch_id,))
-
+    cur.execute("SELECT id FROM month_locks WHERE month_ref = ? AND profile = ?", (month_ref, profile))
+    exists = cur.fetchone() is not None
+    if exists:
+        cur.execute("UPDATE month_locks SET locked = ?, locked_at = ? WHERE month_ref = ? AND profile = ?",
+                    (1 if locked else 0, now if locked else None, month_ref, profile))
+    else:
+        cur.execute("INSERT INTO month_locks (month_ref, profile, locked, locked_at) VALUES (?, ?, ?, ?)",
+                    (month_ref, profile, 1 if locked else 0, now if locked else None))
     conn.commit()
     conn.close()
-    return True, "Lancamento excluido"
 
-def delete_transactions_bulk(ids: list[int], profile: str) -> tuple[int, list[str]]:
-    deleted = 0
-    errors = []
-    for tx_id in ids:
-        ok, msg = delete_transaction_any(tx_id, profile)
-        if ok:
-            deleted += 1
-        else:
-            errors.append(f"ID {tx_id}: {msg}")
-    return deleted, errors
+def year_month_select_html(selected_year: str, selected_month: str):
+    year_options = "".join([
+        f"<option value='{y}' {'selected' if str(y)==str(selected_year) else ''}>{y}</option>"
+        for y in range(2024, 2031)
+    ])
+    month_options = "".join([
+        f"<option value='{m:02d}' {'selected' if f'{m:02d}'==str(selected_month) else ''}>{m:02d}</option>"
+        for m in range(1, 13)
+    ])
+    return year_options, month_options
 
-# ---------- Routes ----------
-@app.route("/template")
-def template_download():
-    # Download do template direto do repo
-    if not os.path.exists(TEMPLATE_PATH):
-        return "Template nao encontrado no servidor", 404
-    return send_from_directory(TEMPLATE_DIR, TEMPLATE_FILENAME, as_attachment=True)
+def month_selector_block(selected_year: str, selected_month: str, action_url: str):
+    year_options, month_options = year_month_select_html(selected_year, selected_month)
+    month_ref = month_ref_from(selected_year, selected_month)
+    # auto-submit: sem botão Atualizar
+    return f"""
+      <form method="get" action="{action_url}" id="monthForm">
+        <div class="grid2">
+          <div>
+            <label>Ano</label>
+            <select name="Ano" onchange="document.getElementById('monthForm').submit()">{year_options}</select>
+          </div>
+          <div>
+            <label>Mês</label>
+            <select name="Mes" onchange="document.getElementById('monthForm').submit()">{month_options}</select>
+          </div>
+        </div>
+        <div style="margin-top:10px;">
+          <span class="pill">Mês de referência: <b>{month_ref}</b></span>
+        </div>
+      </form>
+    """
+
+def template_path():
+    # template que você colocou no repo: /assets/Template_Financas_Casella.xlsx
+    # (não precisa .keep; mas não tem problema ter)
+    return os.path.join(os.path.dirname(__file__), "assets", "Template_Financas_Casella.xlsx")
+
+# ---------------- ROUTES ----------------
 
 @app.route("/")
 def home():
-    active_profile = session.get("profile", "")
+    profile = session.get("profile", "")
     html = f"""
     <!doctype html>
     <html lang="pt-br">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Financas</title>
+        <title>Casella</title>
         {BASE_CSS}
-        {profile_theme_vars(active_profile)}
       </head>
       <body>
-        {topbar_html(active_profile)}
-        <div class="loginWrap">
-          <div class="wrap loginCard">
-            <div class="card">
-              <h1>Financas da Casa</h1>
-              <p>Escolha um perfil para entrar.</p>
-
-              <div class="bigBtns">
-                <a class="bigBtn lucasGrad" href="{url_for('set_profile', profile='Lucas')}">
-                  <div class="t">Entrar como Lucas</div>
-                  <div class="s">Cor azul no app</div>
-                </a>
-                <a class="bigBtn rafaGrad" href="{url_for('set_profile', profile='Rafa')}">
-                  <div class="t">Entrar como Rafa</div>
-                  <div class="s">Cor verde no app</div>
-                </a>
-              </div>
-
-              <p class="muted" style="margin-top:14px;">
-                Sem senha no MVP, so para evitar confusao de perfil.
-              </p>
+        {topbar_html(profile)}
+        <div class="wrap">
+          <div class="card">
+            <h1>Casella</h1>
+            <p>Escolha o perfil para entrar.</p>
+            <div class="grid2" style="margin-top:14px;">
+              <a class="btn btnPrimary btnLucas" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Lucas')}">Entrar como Lucas</a>
+              <a class="btn btnPrimary btnRafa" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Rafa')}">Entrar como Rafa</a>
             </div>
+            <p class="small" style="margin-top:12px;">Sem senha no MVP. Só para evitar confusão de perfil.</p>
           </div>
         </div>
       </body>
@@ -1167,7 +1060,7 @@ def home():
 def set_profile(profile: str):
     profile = profile.strip()
     if profile not in ALLOWED_PROFILES:
-        return "Perfil invalido", 400
+        return "Perfil inválido", 400
     session["profile"] = profile
     return redirect(url_for("overview"))
 
@@ -1185,18 +1078,19 @@ def perfil():
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Perfil</title>
         {BASE_CSS}
-        {profile_theme_vars(profile)}
       </head>
       <body>
-        {topbar_html(profile)}
+        {topbar_html(profile, "perfil")}
         <div class="wrap">
           <div class="card">
             <h2>Perfil</h2>
-            <p class="muted">Trocar perfil</p>
-            <div class="row" style="justify-content:flex-start;">
-              <a class="btn btnPrimary" href="{url_for('set_profile', profile='Lucas')}">Lucas</a>
-              <a class="btn btnPrimary" href="{url_for('set_profile', profile='Rafa')}">Rafa</a>
-              <a class="btn" href="{url_for('home')}">Sair</a>
+            <p>Trocar perfil.</p>
+            <div class="grid2" style="margin-top:14px;">
+              <a class="btn btnPrimary btnLucas" style="padding:16px;" href="{url_for('set_profile', profile='Lucas')}">Ir para Lucas</a>
+              <a class="btn btnPrimary btnRafa" style="padding:16px;" href="{url_for('set_profile', profile='Rafa')}">Ir para Rafa</a>
+            </div>
+            <div class="row" style="margin-top:12px;">
+              <a class="btn btnGhost" href="{url_for('logout')}">Sair</a>
             </div>
           </div>
         </div>
@@ -1204,6 +1098,20 @@ def perfil():
     </html>
     """
     return html
+
+@app.route("/logout")
+def logout():
+    session.pop("profile", None)
+    return redirect(url_for("home"))
+
+@app.route("/download-template")
+def download_template():
+    # baixa o template do repo
+    folder = os.path.join(os.path.dirname(__file__), "assets")
+    filename = "Template_Financas_Casella.xlsx"
+    if not os.path.exists(os.path.join(folder, filename)):
+        return "Template não encontrado em /assets. Suba o arquivo com esse nome.", 404
+    return send_from_directory(folder, filename, as_attachment=True)
 
 @app.route("/overview")
 def overview():
@@ -1216,218 +1124,168 @@ def overview():
     selected_month = request.args.get("Mes") or f"{now_m:02d}"
     month_ref = month_ref_from(selected_year, selected_month)
 
-    view = request.args.get("view") or "casa"  # casa ou individual
+    mode = request.args.get("mode") or "casa"  # casa | individual
 
-    casa_data = compute_casa(month_ref)
-    ind_data = compute_individual(month_ref, profile)
+    casa = compute_casa(month_ref)
+    ind = compute_individual(month_ref, profile)
 
-    # Drilldown por categoria (itens que compõem)
-    def drilldown_rows_for_category_casa(cat_name: str):
-        out = ""
-        for r in casa_data["rows"]:
-            cat = (r["categoria"] or "Sem categoria")
-            if cat != cat_name:
-                continue
+    def category_details_html(cat, obj):
+        # detalhes do que compõe aquela categoria (casa)
+        rows = ""
+        items = obj.get("items", [])
+        for r in items[:500]:
             val = signed_value(r["tipo"], r["valor"])
-            out += f"""
+            rows += f"""
               <tr>
-                <td class="small">{_normalize_str(r["dt_text"])}</td>
-                <td class="small">{_normalize_str(r["estabelecimento"])}</td>
-                <td class="small">{_normalize_str(r["uploaded_by"])}</td>
-                <td class="small">{_normalize_str(r["rateio"])}</td>
+                <td class="small">{_normalize_str(r['dt_text'])}</td>
+                <td class="small">{_normalize_str(r['estabelecimento'])}</td>
                 <td class="right">{brl(val)}</td>
+                <td class="small">{r['tipo']}</td>
+                <td class="small">{r['uploaded_by']}</td>
+                <td class="small">{r['rateio']}</td>
               </tr>
             """
-        if not out:
-            out = "<tr><td colspan='5' class='muted'>Sem itens</td></tr>"
-        return out
+        if not rows:
+            rows = "<tr><td colspan='6' class='small'>Sem itens</td></tr>"
+        return f"""
+        <details>
+          <summary>{cat} <span class="tag" style="margin-left:10px;">Total {brl(obj['total'])}</span></summary>
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Descrição</th>
+                <th class="right">Valor</th>
+                <th>Tipo</th>
+                <th>Pago por</th>
+                <th>Rateio</th>
+              </tr>
+            </thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </details>
+        """
 
-    def drilldown_rows_for_category_ind(cat_name: str, kind: str):
-        # kind: house ou personal
-        out = ""
-        for r in ind_data["rows"]:
-            cat = (r["categoria"] or "Sem categoria")
-            if cat != cat_name:
-                continue
-            val = signed_value(r["tipo"], r["valor"])
-
-            if kind == "house":
-                if not (r["dono"] == "Casa" and r["rateio"] in ("60_40", "50_50")):
-                    continue
-                part = val * share_for(profile, r["rateio"])
-                out += f"""
-                  <tr>
-                    <td class="small">{_normalize_str(r["dt_text"])}</td>
-                    <td class="small">{_normalize_str(r["estabelecimento"])}</td>
-                    <td class="small">{_normalize_str(r["uploaded_by"])}</td>
-                    <td class="small">{_normalize_str(r["rateio"])}</td>
-                    <td class="right">{brl(part)}</td>
-                  </tr>
-                """
-            else:
-                if not (r["rateio"] == "100_meu" and r["uploaded_by"] == profile and r["dono"] == profile):
-                    continue
-                out += f"""
-                  <tr>
-                    <td class="small">{_normalize_str(r["dt_text"])}</td>
-                    <td class="small">{_normalize_str(r["estabelecimento"])}</td>
-                    <td class="small">{_normalize_str(r["uploaded_by"])}</td>
-                    <td class="small">{_normalize_str(r["dono"])}</td>
-                    <td class="right">{brl(val)}</td>
-                  </tr>
-                """
-        if not out:
-            out = "<tr><td colspan='5' class='muted'>Sem itens</td></tr>"
-        return out
-
-    # Render categorias com details para abrir e ver composição
-    cats_cards = ""
-    if view == "casa":
-        for cat, obj in casa_data["cats_sorted"]:
-            inner = drilldown_rows_for_category_casa(cat)
-            cats_cards += f"""
-              <details style="margin-top:10px;">
-                <summary>{cat}  <span class="muted">Total {brl(obj["total"])}</span></summary>
-                <div style="margin-top:10px;">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Data</th>
-                        <th>Estabelecimento</th>
-                        <th>Pagador</th>
-                        <th>Rateio</th>
-                        <th class="right">Valor</th>
-                      </tr>
-                    </thead>
-                    <tbody>{inner}</tbody>
-                  </table>
-                </div>
-              </details>
-            """
-        if not cats_cards:
-            cats_cards = "<p class='muted'>Sem dados de Casa para esse mes.</p>"
-    else:
-        # Individual
-        # Minha parte da casa por categoria
-        cats_cards += "<h3 style='margin-top:0;'>Minha parte da Casa por categoria</h3>"
-        for cat, val in ind_data["cats_house"]:
-            inner = drilldown_rows_for_category_ind(cat, "house")
-            cats_cards += f"""
-              <details style="margin-top:10px;">
-                <summary>{cat}  <span class="muted">Total {brl(val)}</span></summary>
-                <div style="margin-top:10px;">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Data</th>
-                        <th>Estabelecimento</th>
-                        <th>Pagador</th>
-                        <th>Rateio</th>
-                        <th class="right">Minha parte</th>
-                      </tr>
-                    </thead>
-                    <tbody>{inner}</tbody>
-                  </table>
-                </div>
-              </details>
-            """
-        if not ind_data["cats_house"]:
-            cats_cards += "<p class='muted'>Sem gastos de Casa para esse mes.</p>"
-
-        cats_cards += "<h3 style='margin-top:16px;'>Meu pessoal por categoria</h3>"
-        for cat, val in ind_data["cats_personal"]:
-            inner = drilldown_rows_for_category_ind(cat, "personal")
-            cats_cards += f"""
-              <details style="margin-top:10px;">
-                <summary>{cat}  <span class="muted">Total {brl(val)}</span></summary>
-                <div style="margin-top:10px;">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Data</th>
-                        <th>Estabelecimento</th>
-                        <th>Pagador</th>
-                        <th>Responsabilidade</th>
-                        <th class="right">Valor</th>
-                      </tr>
-                    </thead>
-                    <tbody>{inner}</tbody>
-                  </table>
-                </div>
-              </details>
-            """
-        if not ind_data["cats_personal"]:
-            cats_cards += "<p class='muted'>Sem gastos pessoais para esse mes.</p>"
-
-    casa_summary = f"""
-      <div class="kpi">
-        <div class="box">
-          <div class="label">Total Casa</div>
-          <div class="value">{brl(casa_data["total_casa"])}</div>
-        </div>
-        <div class="box">
-          <div class="label">Pago Lucas</div>
-          <div class="value">{brl(casa_data["paid_lucas"])}</div>
-          <div class="muted">Deveria {brl(casa_data["expected_lucas"])}</div>
-        </div>
-        <div class="box">
-          <div class="label">Pago Rafa</div>
-          <div class="value">{brl(casa_data["paid_rafa"])}</div>
-          <div class="muted">Deveria {brl(casa_data["expected_rafa"])}</div>
-        </div>
-        <div class="box">
-          <div class="label">Acerto</div>
-          <div class="value">{brl(casa_data["settlement_value"])}</div>
-          <div class="muted">{_normalize_str(casa_data["settlement_text"])}</div>
-        </div>
-      </div>
+    # Toggle
+    toggle = f"""
+    <div class="row" style="margin-top:10px;">
+      <a class="btn {'btnPrimary' if mode=='casa' else 'btnGhost'}" href="{url_for('overview')}?Ano={selected_year}&Mes={selected_month}&mode=casa">Casa</a>
+      <a class="btn {'btnPrimary' if mode=='individual' else 'btnGhost'}" href="{url_for('overview')}?Ano={selected_year}&Mes={selected_month}&mode=individual">Individual</a>
+    </div>
     """
 
-    individual_summary = f"""
-      <div class="kpi">
-        <div class="box">
-          <div class="label">Renda total</div>
-          <div class="value">{brl(ind_data["income"]["total"])}</div>
-        </div>
-        <div class="box">
-          <div class="label">Minha parte da casa</div>
-          <div class="value">{brl(ind_data["house_total"])}</div>
-        </div>
-        <div class="box">
-          <div class="label">Meu pessoal</div>
-          <div class="value">{brl(ind_data["my_personal_total"])}</div>
-        </div>
-        <div class="box">
-          <div class="label">A pagar para o outro</div>
-          <div class="value">{brl(ind_data["payable_total"])}</div>
-        </div>
-      </div>
+    # Casa view
+    casa_block = ""
+    if mode == "casa":
+        cats_details = "".join([category_details_html(cat, obj) for cat, obj in casa["cats_sorted"]])
+        settle_line = f"{casa['settlement_text']}: {brl(casa['settlement_value'])}"
+        casa_block = f"""
+          <div class="card">
+            <h3>Resumo da Casa</h3>
+            <div class="kpi">
+              <div class="box">
+                <div class="label">Total Casa</div>
+                <div class="value">{brl(casa["total_casa"])}</div>
+              </div>
+              <div class="box">
+                <div class="label">Pago Lucas</div>
+                <div class="value">{brl(casa["paid_lucas"])}</div>
+                <div class="small">Deveria: {brl(casa["expected_lucas"])}</div>
+              </div>
+              <div class="box">
+                <div class="label">Pago Rafa</div>
+                <div class="value">{brl(casa["paid_rafa"])}</div>
+                <div class="small">Deveria: {brl(casa["expected_rafa"])}</div>
+              </div>
+              <div class="box">
+                <div class="label">Acerto</div>
+                <div class="value">{brl(casa["settlement_value"])}</div>
+                <div class="small">{casa["settlement_text"]}</div>
+              </div>
+            </div>
 
-      <div class="kpi" style="margin-top:12px;">
-        <div class="box">
-          <div class="label">Gastos efetivos</div>
-          <div class="value">{brl(ind_data["expenses_effective"])}</div>
-          <div class="muted">Casa mais Pessoal mais A pagar</div>
-        </div>
-        <div class="box">
-          <div class="label">Saldo pos pagamentos</div>
-          <div class="value">{brl(ind_data["saldo_pos_pagamentos"])}</div>
-        </div>
-        <div class="box">
-          <div class="label">Investir</div>
-          <div class="value">{brl(ind_data["invested"])}</div>
-          <div class="muted">{pct(ind_data["invested_pct"])} da renda do mes</div>
-        </div>
-        <div class="box">
-          <div class="label">Saldo em conta</div>
-          <div class="value">{brl(ind_data["saldo_em_conta"])}</div>
-        </div>
-      </div>
-    """
+            <div class="okBox" style="margin-top:12px;">
+              <b>Acerto do mês</b><br/>{settle_line}
+            </div>
+          </div>
 
-    summary_block = casa_summary if view == "casa" else individual_summary
-    tab_casa = "tab tabActive" if view == "casa" else "tab"
-    tab_ind = "tab tabActive" if view == "individual" else "tab"
+          <div class="card">
+            <h3>Categorias (clique para ver os itens)</h3>
+            {cats_details if cats_details else "<p class='small'>Sem itens de Casa importados para este mês.</p>"}
+          </div>
+        """
+
+    # Individual view
+    individual_block = ""
+    if mode == "individual":
+        def rows_from(items):
+            out = ""
+            for cat, val in items:
+                out += f"<tr><td>{cat}</td><td class='right'>{brl(val)}</td></tr>"
+            if not out:
+                out = "<tr><td colspan='2' class='small'>Sem dados</td></tr>"
+            return out
+
+        individual_block = f"""
+          <div class="card">
+            <h3>Resumo Individual ({profile})</h3>
+            <div class="kpi">
+              <div class="box">
+                <div class="label">Renda total</div>
+                <div class="value">{brl(ind["income"]["total"])}</div>
+              </div>
+              <div class="box">
+                <div class="label">Minha parte da casa</div>
+                <div class="value">{brl(ind["house_total"])}</div>
+              </div>
+              <div class="box">
+                <div class="label">Meu pessoal</div>
+                <div class="value">{brl(ind["my_personal_total"])}</div>
+              </div>
+              <div class="box">
+                <div class="label">A pagar para o outro</div>
+                <div class="value">{brl(ind["payable_total"])}</div>
+              </div>
+            </div>
+
+            <div class="kpi" style="margin-top:12px;">
+              <div class="box">
+                <div class="label">Gastos efetivos</div>
+                <div class="value">{brl(ind["expenses_effective"])}</div>
+                <div class="small">Casa + Pessoal + A pagar</div>
+              </div>
+              <div class="box">
+                <div class="label">Saldo pós pagamentos</div>
+                <div class="value">{brl(ind["saldo_pos_pagamentos"])}</div>
+              </div>
+              <div class="box">
+                <div class="label">Investir</div>
+                <div class="value">{brl(ind["invested"])}</div>
+                <div class="small">{pct(ind["invested_pct"])} da renda</div>
+              </div>
+              <div class="box">
+                <div class="label">Saldo em conta</div>
+                <div class="value">{brl(ind["saldo_em_conta"])}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Minha parte da casa por categoria</h3>
+            <table>
+              <thead><tr><th>Categoria</th><th class="right">Valor</th></tr></thead>
+              <tbody>{rows_from(ind["cats_house"])}</tbody>
+            </table>
+          </div>
+
+          <div class="card">
+            <h3>Meu pessoal por categoria</h3>
+            <table>
+              <thead><tr><th>Categoria</th><th class="right">Valor</th></tr></thead>
+              <tbody>{rows_from(ind["cats_personal"])}</tbody>
+            </table>
+          </div>
+        """
 
     html = f"""
     <!doctype html>
@@ -1437,41 +1295,27 @@ def overview():
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Overview</title>
         {BASE_CSS}
-        {profile_theme_vars(profile)}
       </head>
       <body>
-        {topbar_html(profile)}
+        {topbar_html(profile, "overview")}
         <div class="wrap">
           <div class="card">
             <h2>Overview</h2>
-            <p class="muted">Toggle entre Casa e Individual, com detalhamento por categoria.</p>
+            <p>Visão do mês (Casa e Individual).</p>
             {month_selector_block(selected_year, selected_month, url_for('overview'))}
-
-            <div class="tabs">
-              <a class="{tab_casa}" href="{url_for('overview')}?Ano={selected_year}&Mes={selected_month}&view=casa">Casa</a>
-              <a class="{tab_ind}" href="{url_for('overview')}?Ano={selected_year}&Mes={selected_month}&view=individual">Individual</a>
-            </div>
+            {toggle}
           </div>
 
-          <div class="card">
-            <h3>Resumo</h3>
-            {summary_block}
-          </div>
-
-          <div class="card">
-            <h3>Categorias</h3>
-            <p class="muted">Clique na categoria para abrir e ver os itens que compoem.</p>
-            {cats_cards}
-          </div>
+          {casa_block}
+          {individual_block}
         </div>
       </body>
     </html>
     """
     return html
 
-@app.route("/entrada", methods=["GET", "POST"])
-def entrada():
-    # Entradas é a antiga Renda, mantida
+@app.route("/entradas", methods=["GET", "POST"])
+def entradas():
     profile = session.get("profile", "")
     if not profile:
         return redirect(url_for("home"))
@@ -1497,14 +1341,11 @@ def entrada():
         msg = "Entradas salvas"
 
     inc = get_income(month_ref, profile)
+    lock = get_lock(month_ref, profile)
 
     msg_block = ""
     if msg:
-        msg_block = f"""
-          <div class="card">
-            <div class="okBox"><b>{msg}</b></div>
-          </div>
-        """
+        msg_block = f"<div class='card'><div class='okBox'><b>{msg}</b></div></div>"
 
     html = f"""
     <!doctype html>
@@ -1514,46 +1355,48 @@ def entrada():
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Entradas</title>
         {BASE_CSS}
-        {profile_theme_vars(profile)}
       </head>
       <body>
-        {topbar_html(profile)}
+        {topbar_html(profile, "entradas")}
         <div class="wrap">
           <div class="card">
             <h2>Entradas</h2>
-            {month_selector_block(selected_year, selected_month, url_for('entrada'))}
-          </div>
-
-          <div class="card">
-            <h3>Valores do mes</h3>
-            <form method="post">
-              <input type="hidden" name="Ano" value="{selected_year}">
-              <input type="hidden" name="Mes" value="{selected_month}">
-
-              <div class="grid3">
-                <div>
-                  <label>Salario 1</label>
-                  <input type="text" name="salario_1" value="{inc['salario_1']:.2f}" />
-                </div>
-                <div>
-                  <label>Salario 2</label>
-                  <input type="text" name="salario_2" value="{inc['salario_2']:.2f}" />
-                </div>
-                <div>
-                  <label>Extras</label>
-                  <input type="text" name="extras" value="{inc['extras']:.2f}" />
-                </div>
-              </div>
-
-              <div class="row" style="justify-content:flex-start; margin-top:12px;">
-                <button class="btn btnPrimary" type="submit">Salvar</button>
-              </div>
-
-              <p class="muted" style="margin-top:10px;">Total do mes <b>{brl(inc['total'])}</b></p>
-            </form>
+            <p>Salário 1, salário 2 e extras.</p>
+            {month_selector_block(selected_year, selected_month, url_for('entradas'))}
+            <div style="margin-top:10px;">
+              <span class="pill">Mês {month_ref}</span>
+              <span class="pill">Mês {'FECHADO' if lock else 'ABERTO'} para {profile}</span>
+            </div>
           </div>
 
           {msg_block}
+
+          <div class="card">
+            <h3>Valores do mês</h3>
+            <form method="post">
+              <input type="hidden" name="Ano" value="{selected_year}">
+              <input type="hidden" name="Mes" value="{selected_month}">
+              <div class="grid3">
+                <div>
+                  <label>Salário 1</label>
+                  <input type="text" name="salario_1" value="{inc['salario_1']:.2f}">
+                </div>
+                <div>
+                  <label>Salário 2</label>
+                  <input type="text" name="salario_2" value="{inc['salario_2']:.2f}">
+                </div>
+                <div>
+                  <label>Extras</label>
+                  <input type="text" name="extras" value="{inc['extras']:.2f}">
+                </div>
+              </div>
+              <div class="row" style="margin-top:12px;">
+                <button class="btn btnPrimary" type="submit">Salvar</button>
+                <a class="btn btnGhost" href="{url_for('overview')}?Ano={selected_year}&Mes={selected_month}&mode=individual">Ver no Overview</a>
+              </div>
+              <p style="margin-top:10px;">Total do mês: <b>{brl(inc['total'])}</b></p>
+            </form>
+          </div>
         </div>
       </body>
     </html>
@@ -1562,7 +1405,6 @@ def entrada():
 
 @app.route("/saidas", methods=["GET", "POST"])
 def saidas():
-    # Saidas unifica upload e manual, mantendo comportamento do MVP
     profile = session.get("profile", "")
     if not profile:
         return redirect(url_for("home"))
@@ -1571,6 +1413,8 @@ def saidas():
     selected_year = request.values.get("Ano") or str(now_y)
     selected_month = request.values.get("Mes") or f"{now_m:02d}"
     month_ref = month_ref_from(selected_year, selected_month)
+
+    lock = get_lock(month_ref, profile)
 
     action = request.form.get("action", "")
 
@@ -1581,100 +1425,153 @@ def saidas():
     preview_rows = []
     preview_batch_id = ""
 
+    # Manual: extras e variáveis (sem planilha)
     manual_defaults = {
         "Data": "",
         "Estabelecimento": "",
         "Categoria": "",
         "Valor": "",
         "Tipo": "Saida",
-        "Responsabilidade": "Casa",
+        "Dono": "Casa",           # Responsabilidade
         "Rateio": "60_40",
         "Observacao": "",
         "Parcela": "",
+        "RepetirMeses": "1",      # total (inclui mês atual)
     }
 
+    def parse_num_br(v):
+        try:
+            v = str(v).replace("R$", "").replace(" ", "").strip()
+            if "," in v and "." in v:
+                v = v.replace(".", "").replace(",", ".")
+            elif "," in v and "." not in v:
+                v = v.replace(",", ".")
+            return float(v) if v else 0.0
+        except:
+            return 0.0
+
     if request.method == "POST":
-        if action == "manual":
-            form_data = dict(manual_defaults)
-            for k in form_data.keys():
-                form_data[k] = _normalize_str(request.form.get(k))
+        if lock and action not in {"unlock"}:
+            errors.append("Mês fechado para este perfil. Clique em 'Editar mês' para liberar.")
+        else:
+            if action == "lock_month":
+                # fecha mês com alerta de pendentes preenchidos?
+                # aqui a checagem é simples: se existem pendentes (luz/gas/empregada) lançados no mês
+                missing = []
+                rows = fetch_imported_transactions(month_ref)
+                descs = " ".join([_normalize_str(r["estabelecimento"]).lower() for r in rows])
+                for p in PENDENTES:
+                    if p["key"] not in descs:
+                        missing.append(p["label"])
+                if missing:
+                    info = "Existem pendentes não preenchidos: " + ", ".join(missing)
+                    info_ok = False
+                else:
+                    set_lock(month_ref, profile, True)
+                    info = "Mês fechado para este perfil."
+                    info_ok = True
 
-            # Data optional, input date vem yyyy-mm-dd, mas aceitamos qualquer string
-            # Valor
-            try:
-                v = str(form_data["Valor"]).replace(".", "").replace(",", ".")
-                valor = float(v) if v else 0.0
-            except:
-                valor = 0.0
-
-            tipo = form_data["Tipo"]
-            resp = form_data["Responsabilidade"]
-            rateio = form_data["Rateio"]
-
-            if valor <= 0:
-                errors.append("Valor precisa ser maior que 0")
-            if tipo not in ALLOWED_TIPO:
-                errors.append("Tipo invalido")
-            if resp not in ALLOWED_RESP:
-                errors.append("Responsabilidade invalida")
-            if rateio not in ALLOWED_RATEIO:
-                errors.append("Rateio invalido")
-
-            if resp == "Casa" and rateio not in {"60_40", "50_50"}:
-                errors.append("Responsabilidade Casa exige rateio 60_40 ou 50_50")
-            if resp != "Casa" and rateio in {"60_40", "50_50"}:
-                errors.append("Rateio 60_40 ou 50_50 exige Responsabilidade Casa")
-
-            if not errors:
-                row = dict(form_data)
-                row["Valor"] = valor
-                create_manual_batch(month_ref, profile, row)
-                info = "Gasto manual adicionado"
+            elif action == "unlock":
+                set_lock(month_ref, profile, False)
+                info = "Edição liberada para este mês."
                 info_ok = True
 
-        elif action == "excel_preview":
-            file = request.files.get("file")
-            if not file or file.filename.strip() == "":
-                errors.append("Arquivo obrigatorio")
+            elif action == "manual":
+                form_data = dict(manual_defaults)
+                for k in form_data.keys():
+                    form_data[k] = _normalize_str(request.form.get(k))
 
-            if not errors:
-                try:
-                    raw = file.read()
-                    file_hash = compute_file_hash(raw)
+                valor = parse_num_br(form_data["Valor"])
+                tipo = _normalize_str(form_data["Tipo"])
+                resp = _normalize_str(form_data["Dono"])
+                rateio = _canon_rateio(_normalize_str(form_data["Rateio"]))
+                repetir_total = int(parse_num_br(form_data["RepetirMeses"]) or 1)
+                if repetir_total < 1:
+                    repetir_total = 1
+                if repetir_total > 36:
+                    repetir_total = 36
 
-                    if is_duplicate_import(month_ref, profile, file_hash):
-                        errors.append("Esse mesmo arquivo ja foi importado nesse mes para esse perfil")
-                    else:
-                        df, warnings = read_excel_from_bytes(raw)
-                        errors, preview_rows = validate_transactions(df)
-                        if not errors:
-                            preview_batch_id = create_preview_batch(month_ref, profile, file.filename, preview_rows, file_hash)
-                            info = "Preview criado. Confirme para importar."
-                            info_ok = True
-                except Exception as e:
-                    errors.append(str(e))
+                if valor <= 0:
+                    errors.append("Valor precisa ser maior que 0")
+                if tipo not in ALLOWED_TIPO:
+                    errors.append("Tipo inválido")
+                if resp not in ALLOWED_RESP:
+                    errors.append("Responsabilidade inválida")
+                if rateio not in {"60_40", "50_50", "100_meu", "100_outro"}:
+                    errors.append("Rateio inválido")
+                if resp == "Casa" and rateio not in {"60_40", "50_50"}:
+                    errors.append("Casa só permite 60/40 ou 50/50")
+                if resp in {"Lucas", "Rafa"} and rateio in {"60_40", "50_50"}:
+                    errors.append("60/40 ou 50/50 exige Casa")
 
-        elif action == "excel_import":
-            batch_id = _normalize_str(request.form.get("batch_id"))
-            ok, msg = finalize_import(batch_id, profile)
-            info = msg
-            info_ok = ok
+                if not errors:
+                    # Repete já gerando lançamentos futuros (mês atual + (n-1))
+                    # regra: Data é opcional, e não validamos.
+                    base_row = {
+                        "Data": form_data["Data"],
+                        "Estabelecimento": form_data["Estabelecimento"],
+                        "Categoria": form_data["Categoria"],
+                        "Valor": valor,
+                        "Tipo": tipo,
+                        "Dono": resp,
+                        "Rateio": rateio,
+                        "Observacao": form_data["Observacao"],
+                        "Parcela": form_data["Parcela"],
+                    }
 
-        elif action == "go_lancamentos":
-            return redirect(url_for("lancamentos") + f"?Ano={selected_year}&Mes={selected_month}")
+                    year = int(selected_year)
+                    month = int(selected_month)
 
-    # opções
-    tipo_opts = "".join([f"<option value='{t}'>{t}</option>" for t in ["Saida", "Entrada"]])
-    resp_opts = "".join([f"<option value='{d}'>{d}</option>" for d in ["Casa", "Lucas", "Rafa"]])
-    rateio_opts = "".join([f"<option value='{r}'>{r}</option>" for r in ["60_40", "50_50", "100_meu", "100_outro"]])
+                    for i in range(repetir_total):
+                        y = year
+                        m = month + i
+                        while m > 12:
+                            m -= 12
+                            y += 1
+                        mref = f"{y}{m:02d}"
+                        create_manual_batch(mref, profile, base_row)
 
+                    info = f"Lançamento manual adicionado (repetido por {repetir_total} mês(es))"
+                    info_ok = True
+
+            elif action == "excel_preview":
+                file = request.files.get("file")
+                if not file or file.filename.strip() == "":
+                    errors.append("Arquivo obrigatório")
+
+                if not errors:
+                    try:
+                        raw = file.read()
+                        file_hash = compute_file_hash(raw)
+
+                        if is_duplicate_import(month_ref, profile, file_hash):
+                            errors.append("Esse mesmo arquivo já foi importado neste mês para este perfil")
+                        else:
+                            df = read_excel_from_bytes(raw)
+                            errors, preview_rows = validate_transactions(df)
+                            if not errors:
+                                preview_batch_id = create_preview_batch(month_ref, profile, file.filename, preview_rows, file_hash)
+                                info = "Preview criado. Confirme para importar."
+                                info_ok = True
+                    except Exception as e:
+                        errors.append(str(e))
+
+            elif action == "excel_import":
+                batch_id = _normalize_str(request.form.get("batch_id"))
+                ok, msg = finalize_import(batch_id, profile)
+                info = msg
+                info_ok = ok
+
+    # Se quiser ver lista do mês, puxamos já
+    imported_rows = fetch_imported_transactions(month_ref)
+
+    # UI helpers
     err_block = ""
     if errors:
-        items = "".join([f"<li>{e}</li>" for e in errors[:40]])
+        items = "".join([f"<li>{e}</li>" for e in errors[:60]])
         err_block = f"""
           <div class="card">
-            <h3>Erros</h3>
-            <div class="errorBox"><ul>{items}</ul></div>
+            <div class="errorBox"><b>Erros</b><ul style="margin:8px 0 0 18px;">{items}</ul></div>
           </div>
         """
 
@@ -1685,41 +1582,39 @@ def saidas():
           <div class="card">
             <div class="{klass}">
               <b>{info}</b>
-              <div class="row" style="justify-content:flex-start; margin-top:12px;">
-                <a class="btn btnPrimary" href="{url_for('lancamentos')}?Ano={selected_year}&Mes={selected_month}">Ver lancamentos</a>
-                <a class="btn" href="{url_for('overview')}?Ano={selected_year}&Mes={selected_month}">Ir para overview</a>
-              </div>
             </div>
           </div>
         """
 
+    # Preview table
     preview_table = ""
     if preview_batch_id and preview_rows and not errors:
-        head = "".join([f"<th>{c}</th>" for c in ["Data","Estabelecimento","Categoria","Valor","Tipo","Responsabilidade","Rateio","Observacao","Parcela"]])
+        head = "".join([f"<th>{c}</th>" for c in ["Data", "Dono", "Categoria", "Estabelecimento", "Valor", "Tipo", "Rateio"]])
         body_rows = ""
         for r in preview_rows[:25]:
-            tds = "".join([
-                f"<td>{'' if r.get(c) is None else r.get(c)}</td>"
-                for c in ["Data","Estabelecimento","Categoria","Valor","Tipo","Responsabilidade","Rateio","Observacao","Parcela"]
-            ])
-            body_rows += f"<tr>{tds}</tr>"
-
+            body_rows += f"""
+              <tr>
+                <td class="small">{_normalize_str(r.get("Data"))}</td>
+                <td class="small">{_normalize_str(r.get("Dono"))}</td>
+                <td class="small">{_normalize_str(r.get("Categoria"))}</td>
+                <td class="small">{_normalize_str(r.get("Estabelecimento"))}</td>
+                <td class="right">{brl(r.get("Valor"))}</td>
+                <td class="small">{_normalize_str(r.get("Tipo"))}</td>
+                <td class="small">{_normalize_str(r.get("Rateio"))}</td>
+              </tr>
+            """
         preview_table = f"""
           <div class="card">
-            <h3>Preview do arquivo</h3>
-            <p class="muted">Batch <span class="mono">{preview_batch_id[:10]}...</span> mostrando 25 linhas</p>
-            <div class="okBox">
+            <h3>Preview</h3>
+            <p class="small">Batch: <span class="mono">{preview_batch_id[:10]}...</span></p>
+            <div class="row" style="margin-top:10px;">
               <form method="post">
                 <input type="hidden" name="Ano" value="{selected_year}">
                 <input type="hidden" name="Mes" value="{selected_month}">
                 <input type="hidden" name="action" value="excel_import">
                 <input type="hidden" name="batch_id" value="{preview_batch_id}">
-                <div class="row" style="justify-content:flex-start;">
-                  <button class="btn btnPrimary" type="submit">OK importar</button>
-                  <a class="btn" href="{url_for('lancamentos')}?Ano={selected_year}&Mes={selected_month}">Ver lancamentos</a>
-                </div>
+                <button class="btn btnPrimary" type="submit">OK, importar</button>
               </form>
-              <p class="muted" style="margin-top:10px;">Se voce nao importar, o batch fica como preview e pode ser excluido em Lancamentos.</p>
             </div>
             <table>
               <thead><tr>{head}</tr></thead>
@@ -1728,51 +1623,154 @@ def saidas():
           </div>
         """
 
+    # Fixos e Pendentes aparecem no topo apenas quando a lista de lançamentos do mês está visível
+    fixos_html = ""
+    pend_html = ""
+    if imported_rows:
+        fixos_rows = ""
+        for f in FIXOS:
+            fixos_rows += f"""
+              <tr>
+                <td class="small">{f["label"]}</td>
+                <td class="small">Respons.: <b>{f["resp"]}</b></td>
+                <td class="small">Quem paga: <b>{f["payer"]}</b></td>
+                <td class="small">Rateio: <b>{f["rateio"]}</b></td>
+                <td class="right"><b>{brl(f["valor"])}</b></td>
+              </tr>
+            """
+        fixos_html = f"""
+          <details open>
+            <summary>Fixos (referência)</summary>
+            <p class="small">Eles não precisam vir na fatura. Use como guia e edite via lançamento manual quando mudar valor.</p>
+            <table>
+              <thead><tr><th>Item</th><th>Resp.</th><th>Quem paga</th><th>Rateio</th><th class="right">Valor</th></tr></thead>
+              <tbody>{fixos_rows}</tbody>
+            </table>
+          </details>
+        """
+
+        pend_rows = ""
+        for p in PENDENTES:
+            pend_rows += f"""
+              <tr>
+                <td class="small">{p["label"]}</td>
+                <td class="small">{p["categoria"]}</td>
+                <td class="small"><span class="tag">Pendente</span></td>
+              </tr>
+            """
+        pend_html = f"""
+          <details open>
+            <summary>Pendentes</summary>
+            <p class="small">Itens que variam. Preencha via “Adicionar manual” quando tiver o valor.</p>
+            <table>
+              <thead><tr><th>Item</th><th>Categoria</th><th>Status</th></tr></thead>
+              <tbody>{pend_rows}</tbody>
+            </table>
+          </details>
+        """
+
+    # Listagem do mês (simples)
+    rows_html = ""
+    for r in imported_rows[:900]:
+        val = signed_value(r["tipo"], r["valor"])
+        rows_html += f"""
+          <tr>
+            <td class="small">{_normalize_str(r["dt_text"])}</td>
+            <td class="small">{_normalize_str(r["uploaded_by"])}</td>
+            <td class="small">{_normalize_str(r["dono"])}</td>
+            <td class="small">{_normalize_str(r["categoria"])}</td>
+            <td class="small">{_normalize_str(r["estabelecimento"])}</td>
+            <td class="right">{brl(val)}</td>
+            <td class="small">{_normalize_str(r["rateio"])}</td>
+            <td class="small">{_normalize_str(r["tipo"])}</td>
+          </tr>
+        """
+    if not rows_html:
+        rows_html = "<tr><td colspan='8' class='small'>Sem lançamentos importados para esse mês.</td></tr>"
+
+    # Manual form (com mini calendário)
+    rateio_opts = "".join([f"<option value='{k}'>{k}</option>" for k in ["60/40", "50/50", "100%_Meu", "100%_Outro"]])
+    resp_opts = "".join([f"<option value='{d}'>{d}</option>" for d in ["Casa", "Lucas", "Rafa"]])
+    tipo_opts = "".join([f"<option value='{t}'>{t}</option>" for t in ["Saida", "Entrada"]])
+
+    cat_datalist = "".join([f"<option value='{c}'></option>" for c in SUGGESTED_CATEGORIES])
+
+    lock_banner = f"""
+      <div class="pill">Mês {'FECHADO' if lock else 'ABERTO'} para {profile}</div>
+    """
+
+    lock_controls = ""
+    if lock:
+        lock_controls = f"""
+        <form method="post">
+          <input type="hidden" name="Ano" value="{selected_year}">
+          <input type="hidden" name="Mes" value="{selected_month}">
+          <input type="hidden" name="action" value="unlock">
+          <button class="btn btnGhost" type="submit">Editar mês</button>
+        </form>
+        """
+    else:
+        lock_controls = f"""
+        <form method="post">
+          <input type="hidden" name="Ano" value="{selected_year}">
+          <input type="hidden" name="Mes" value="{selected_month}">
+          <input type="hidden" name="action" value="lock_month">
+          <button class="btn btnPrimary" type="submit">Fechar mês</button>
+        </form>
+        """
+
     html = f"""
     <!doctype html>
     <html lang="pt-br">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Saidas</title>
+        <title>Saídas</title>
         {BASE_CSS}
-        {profile_theme_vars(profile)}
       </head>
       <body>
-        {topbar_html(profile)}
+        {topbar_html(profile, "saidas")}
         <div class="wrap">
-          <div class="card">
-            <h2>Saidas</h2>
-            <p class="muted">Upload do mes e lancamentos manuais.</p>
-            {month_selector_block(selected_year, selected_month, url_for('saidas'))}
 
-            <div class="row" style="justify-content:flex-start; margin-top:10px;">
-              <a class="btn btnPrimary" href="{url_for('template_download')}">Baixar template</a>
-              <a class="btn" href="{url_for('lancamentos')}?Ano={selected_year}&Mes={selected_month}">Ver lancamentos</a>
+          <div class="card">
+            <div class="row space">
+              <div>
+                <h2>Saídas</h2>
+                <p>Upload do mês, preview e ajustes manuais.</p>
+              </div>
+              <div class="row">
+                {lock_banner}
+                {lock_controls}
+              </div>
             </div>
+            {month_selector_block(selected_year, selected_month, url_for('saidas'))}
           </div>
 
           {err_block}
           {info_block}
 
           <div class="card">
-            <h3>Upload do mes</h3>
-            <p class="muted">Ao escolher o arquivo, o preview abre automaticamente.</p>
-            <form id="excelForm" method="post" enctype="multipart/form-data">
+            <h3>Upload do mês</h3>
+            <p class="small">Você pode subir o seu arquivo do print com 6 colunas (Data, Dono, Categoria, Descrição, Valor, Rateio). O app infere Tipo pelos valores negativos.</p>
+            <div class="row" style="margin-top:10px;">
+              <a class="btn btnGhost" href="{url_for('download_template')}">Baixar template</a>
+            </div>
+            <form id="excelForm" method="post" enctype="multipart/form-data" style="margin-top:12px;">
               <input type="hidden" name="Ano" value="{selected_year}">
               <input type="hidden" name="Mes" value="{selected_month}">
               <input type="hidden" name="action" value="excel_preview">
               <label>Arquivo Excel</label>
-              <input id="fileInput" type="file" name="file" accept=".xlsx,.xls" />
-              <p class="muted">Colunas recomendadas incluem Responsabilidade. Data e Categoria sao livres.</p>
+              <input id="fileInput" type="file" name="file" accept=".xlsx,.xls" {'disabled' if lock else ''}/>
+              <p class="small">Ao escolher o arquivo, o preview abre automaticamente.</p>
             </form>
           </div>
 
           {preview_table}
 
           <div class="card">
-            <h3>Adicionar gasto manual</h3>
-            <p class="muted">Data nao e obrigatoria. Use o calendario se quiser.</p>
+            <h3>Adicionar manual (extras e pendentes)</h3>
+            <p class="small">Data é opcional, mas agora tem calendário. Categoria é livre (com sugestões).</p>
+
             <form method="post">
               <input type="hidden" name="Ano" value="{selected_year}">
               <input type="hidden" name="Mes" value="{selected_month}">
@@ -1780,58 +1778,85 @@ def saidas():
 
               <div class="grid2">
                 <div>
-                  <label>Data</label>
-                  <input type="date" name="Data" placeholder="Opcional" />
-                  <div class="muted" style="margin-top:6px;">Se preferir, deixe em branco.</div>
+                  <label>Data (opcional)</label>
+                  <input type="date" name="Data" {'disabled' if lock else ''}/>
                 </div>
                 <div>
                   <label>Valor</label>
-                  <input type="text" name="Valor" placeholder="ex 120,50" />
+                  <input type="text" name="Valor" placeholder="ex: 120,50" {'disabled' if lock else ''}/>
                 </div>
               </div>
 
               <div class="grid2">
                 <div>
-                  <label>Estabelecimento</label>
-                  <input type="text" name="Estabelecimento" />
+                  <label>Descrição</label>
+                  <input type="text" name="Estabelecimento" {'disabled' if lock else ''}/>
                 </div>
                 <div>
                   <label>Categoria</label>
-                  <input type="text" name="Categoria" placeholder="Livre. Ex Lura, Academia, Mercado, Itens de Casa" />
+                  <input list="cats" type="text" name="Categoria" {'disabled' if lock else ''}/>
+                  <datalist id="cats">{cat_datalist}</datalist>
                 </div>
               </div>
 
               <div class="grid3">
                 <div>
                   <label>Tipo</label>
-                  <select name="Tipo">{tipo_opts}</select>
+                  <select name="Tipo" {'disabled' if lock else ''}>{tipo_opts}</select>
                 </div>
                 <div>
                   <label>Responsabilidade</label>
-                  <select name="Responsabilidade">{resp_opts}</select>
+                  <select name="Dono" {'disabled' if lock else ''}>{resp_opts}</select>
                 </div>
                 <div>
                   <label>Rateio</label>
-                  <select name="Rateio">{rateio_opts}</select>
-                  <div class="muted" style="margin-top:6px;">Se Responsabilidade for Casa, use 60_40 ou 50_50.</div>
+                  <select name="Rateio" {'disabled' if lock else ''}>{rateio_opts}</select>
+                  <p class="small">Se Responsabilidade = Casa, use 60/40 ou 50/50.</p>
                 </div>
               </div>
 
-              <div class="grid2">
+              <div class="grid3">
                 <div>
-                  <label>Parcela</label>
-                  <input type="text" name="Parcela" placeholder="Opcional" />
+                  <label>Repetir por quantos meses</label>
+                  <input type="number" name="RepetirMeses" value="1" min="1" max="36" {'disabled' if lock else ''}/>
                 </div>
                 <div>
-                  <label>Observacao</label>
-                  <input type="text" name="Observacao" placeholder="Opcional" />
+                  <label>Parcela (opcional)</label>
+                  <input type="text" name="Parcela" {'disabled' if lock else ''}/>
+                </div>
+                <div>
+                  <label>Observação (opcional)</label>
+                  <input type="text" name="Observacao" {'disabled' if lock else ''}/>
                 </div>
               </div>
 
-              <div class="row" style="justify-content:flex-start; margin-top:12px;">
-                <button class="btn btnPrimary" type="submit">Salvar gasto manual</button>
+              <div class="row" style="margin-top:12px;">
+                <button class="btn btnPrimary" type="submit" {'disabled' if lock else ''}>Salvar</button>
               </div>
             </form>
+          </div>
+
+          <div class="card">
+            <h3>Lista do mês</h3>
+            <p class="small">Fixos e pendentes aparecem aqui no topo (somente quando a lista está aberta).</p>
+            {fixos_html}
+            {pend_html}
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Pago por</th>
+                  <th>Resp.</th>
+                  <th>Categoria</th>
+                  <th>Descrição</th>
+                  <th class="right">Valor</th>
+                  <th>Rateio</th>
+                  <th>Tipo</th>
+                </tr>
+              </thead>
+              <tbody>{rows_html}</tbody>
+            </table>
           </div>
 
         </div>
@@ -1852,316 +1877,9 @@ def saidas():
     """
     return html
 
-@app.route("/lancamentos", methods=["GET", "POST"])
-def lancamentos():
-    profile = session.get("profile", "")
-    if not profile:
-        return redirect(url_for("home"))
-
-    now_y, now_m = current_year_month()
-    selected_year = request.values.get("Ano") or str(now_y)
-    selected_month = request.values.get("Mes") or f"{now_m:02d}"
-    month_ref = month_ref_from(selected_year, selected_month)
-
-    filter_profile = request.values.get("filter_profile") or "Todos"
-
-    msg = ""
-    msg_ok = True
-    errors = []
-
-    if request.method == "POST":
-        action = request.form.get("action", "")
-
-        if action == "delete_one":
-            try:
-                tx_id = int(request.form.get("tx_id"))
-            except:
-                tx_id = 0
-            ok, m = delete_transaction_any(tx_id, profile)
-            msg = m
-            msg_ok = ok
-
-        elif action == "delete_bulk":
-            ids_raw = request.form.getlist("tx_ids")
-            ids = []
-            for v in ids_raw:
-                try:
-                    ids.append(int(v))
-                except:
-                    pass
-            deleted, errs = delete_transactions_bulk(ids, profile)
-            msg = f"{deleted} lancamentos excluidos"
-            msg_ok = True
-            if errs:
-                errors.extend(errs[:30])
-
-        elif action == "delete_batch":
-            batch_id = _normalize_str(request.form.get("batch_id"))
-            ok, m = delete_batch(batch_id, profile)
-            msg = m
-            msg_ok = ok
-
-    rows = fetch_imported_transactions(month_ref)
-
-    if filter_profile in ("Lucas", "Rafa"):
-        rows = [r for r in rows if r["uploaded_by"] == filter_profile]
-
-    row_html = ""
-    for r in rows[:900]:
-        val = signed_value(r["tipo"], r["valor"])
-        can_delete = (r["uploaded_by"] == profile)
-
-        delete_btn = ""
-        if can_delete:
-            delete_btn = f"""
-              <form method="post" style="display:inline;">
-                <input type="hidden" name="Ano" value="{selected_year}">
-                <input type="hidden" name="Mes" value="{selected_month}">
-                <input type="hidden" name="filter_profile" value="{filter_profile}">
-                <input type="hidden" name="action" value="delete_one">
-                <input type="hidden" name="tx_id" value="{r['id']}">
-                <button class="btn btnDanger" type="submit">Excluir</button>
-              </form>
-            """
-
-        checkbox = f"<input type='checkbox' name='tx_ids' value='{r['id']}' {'disabled' if not can_delete else ''} />"
-        src = r["source"] or ""
-        fname = _normalize_str(r["filename"])
-
-        row_html += f"""
-          <tr>
-            <td>{checkbox}</td>
-            <td class="mono">{r['id']}</td>
-            <td>{r['uploaded_by']}</td>
-            <td class="small">{src}</td>
-            <td class="small">{fname}</td>
-            <td class="small">{_normalize_str(r['dt_text'])}</td>
-            <td class="small">{_normalize_str(r['estabelecimento'])}</td>
-            <td class="small">{_normalize_str(r['categoria'])}</td>
-            <td class="right">{brl(val)}</td>
-            <td class="small">{r['tipo']}</td>
-            <td class="small">{_normalize_str(r['dono'])}</td>
-            <td class="small">{r['rateio']}</td>
-            <td>{delete_btn}</td>
-          </tr>
-        """
-
-    if not row_html:
-        row_html = "<tr><td colspan='13' class='muted'>Sem lancamentos importados para esse mes</td></tr>"
-
-    # batches
-    batches_html = ""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-      SELECT * FROM imports
-      WHERE month_ref = ?
-      ORDER BY created_at DESC
-    """, (month_ref,))
-    batches = cur.fetchall()
-    conn.close()
-
-    for b in batches:
-        can_del_batch = (b["uploaded_by"] == profile)
-        btn = ""
-        if can_del_batch:
-            btn = f"""
-              <form method="post" style="display:inline;">
-                <input type="hidden" name="Ano" value="{selected_year}">
-                <input type="hidden" name="Mes" value="{selected_month}">
-                <input type="hidden" name="filter_profile" value="{filter_profile}">
-                <input type="hidden" name="action" value="delete_batch">
-                <input type="hidden" name="batch_id" value="{b['batch_id']}">
-                <button class="btn btnDanger" type="submit">Excluir batch</button>
-              </form>
-            """
-        batches_html += f"""
-          <tr>
-            <td class="small">{b['created_at']}</td>
-            <td>{b['uploaded_by']}</td>
-            <td class="small">{b['status']}</td>
-            <td class="small">{_normalize_str(b['source'])}</td>
-            <td class="small">{_normalize_str(b['filename'])}</td>
-            <td class="right">{b['row_count']}</td>
-            <td class="mono">{b['batch_id'][:10]}...</td>
-            <td>{btn}</td>
-          </tr>
-        """
-
-    if not batches_html:
-        batches_html = "<tr><td colspan='8' class='muted'>Sem batches</td></tr>"
-
-    msg_block = ""
-    if msg:
-        klass = "okBox" if msg_ok else "errorBox"
-        msg_block = f"""
-          <div class="card">
-            <div class="{klass}">
-              <b>{msg}</b>
-            </div>
-          </div>
-        """
-
-    err_block = ""
-    if errors:
-        items = "".join([f"<li>{e}</li>" for e in errors[:40]])
-        err_block = f"""
-          <div class="card">
-            <h3>Erros</h3>
-            <div class="errorBox"><ul>{items}</ul></div>
-          </div>
-        """
-
-    filter_opts = ""
-    for opt in ["Todos", "Lucas", "Rafa"]:
-        sel = "selected" if opt == filter_profile else ""
-        filter_opts += f"<option value='{opt}' {sel}>{opt}</option>"
-
-    html = f"""
-    <!doctype html>
-    <html lang="pt-br">
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Lancamentos</title>
-        {BASE_CSS}
-        {profile_theme_vars(profile)}
-      </head>
-      <body>
-        {topbar_html(profile)}
-        <div class="wrap">
-
-          <div class="card">
-            <h2>Lancamentos</h2>
-            <p class="muted">Voce so consegue excluir lancamentos do seu perfil {profile}.</p>
-            {month_selector_block(selected_year, selected_month, url_for('lancamentos'))}
-
-            <form method="get" style="margin-top:10px;">
-              <input type="hidden" name="Ano" value="{selected_year}">
-              <input type="hidden" name="Mes" value="{selected_month}">
-              <label>Filtrar por pagador</label>
-              <select name="filter_profile" onchange="this.form.submit()">{filter_opts}</select>
-              <div class="row" style="justify-content:flex-start; margin-top:12px;">
-                <a class="btn btnPrimary" href="{url_for('saidas')}?Ano={selected_year}&Mes={selected_month}">Voltar para saidas</a>
-                <a class="btn" href="{url_for('overview')}?Ano={selected_year}&Mes={selected_month}">Ir para overview</a>
-              </div>
-            </form>
-          </div>
-
-          {msg_block}
-          {err_block}
-
-          <div class="card">
-            <h3>Lista</h3>
-            <form method="post" id="bulkForm">
-              <input type="hidden" name="Ano" value="{selected_year}">
-              <input type="hidden" name="Mes" value="{selected_month}">
-              <input type="hidden" name="filter_profile" value="{filter_profile}">
-              <input type="hidden" name="action" value="delete_bulk">
-
-              <div class="row" style="justify-content:flex-start; margin-top:8px;">
-                <button class="btn btnDanger" type="submit">Excluir selecionados</button>
-                <button class="btn" type="button" onclick="selectAll(true)">Selecionar tudo meus</button>
-                <button class="btn" type="button" onclick="selectAll(false)">Limpar selecao</button>
-              </div>
-
-              <table>
-                <thead>
-                  <tr>
-                    <th></th>
-                    <th>ID</th>
-                    <th>Pagador</th>
-                    <th>Fonte</th>
-                    <th>Arquivo</th>
-                    <th>Data</th>
-                    <th>Estabelecimento</th>
-                    <th>Categoria</th>
-                    <th class="right">Valor</th>
-                    <th>Tipo</th>
-                    <th>Responsabilidade</th>
-                    <th>Rateio</th>
-                    <th>Acao</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {row_html}
-                </tbody>
-              </table>
-            </form>
-          </div>
-
-          <div class="card">
-            <h3>Batches do mes</h3>
-            <p class="muted">Preview tambem aparece aqui. Voce pode excluir batch do seu perfil.</p>
-            <table>
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Pagador</th>
-                  <th>Status</th>
-                  <th>Fonte</th>
-                  <th>Arquivo</th>
-                  <th class="right">Linhas</th>
-                  <th>Batch</th>
-                  <th>Acao</th>
-                </tr>
-              </thead>
-              <tbody>
-                {batches_html}
-              </tbody>
-            </table>
-          </div>
-
-        </div>
-
-        <script>
-          function selectAll(flag) {{
-            const boxes = document.querySelectorAll("input[type='checkbox'][name='tx_ids']");
-            boxes.forEach(b => {{
-              if (b.disabled) return;
-              b.checked = flag;
-            }});
-          }}
-        </script>
-      </body>
-    </html>
-    """
-    return html
-
-# Mantém compat com rota antiga, se você tinha links salvos
-@app.route("/dashboard")
-def dashboard():
-    return redirect(url_for("overview"))
-
-@app.route("/renda", methods=["GET", "POST"])
-def renda():
-    return redirect(url_for("entrada"))
-
-@app.route("/gastos", methods=["GET", "POST"])
-def gastos():
-    return redirect(url_for("saidas"))
-
-@app.route("/casa", methods=["GET"])
-def casa():
-    # Mantida por compat, mas agora Overview é o principal
-    profile = session.get("profile", "")
-    if not profile:
-        return redirect(url_for("home"))
-    now_y, now_m = current_year_month()
-    selected_year = request.args.get("Ano") or str(now_y)
-    selected_month = request.args.get("Mes") or f"{now_m:02d}"
-    return redirect(url_for("overview") + f"?Ano={selected_year}&Mes={selected_month}&view=casa")
-
-@app.route("/individual", methods=["GET", "POST"])
-def individual():
-    # Mantida por compat, mas agora Overview é o principal
-    profile = session.get("profile", "")
-    if not profile:
-        return redirect(url_for("home"))
-    now_y, now_m = current_year_month()
-    selected_year = request.args.get("Ano") or str(now_y)
-    selected_month = request.args.get("Mes") or f"{now_m:02d}"
-    return redirect(url_for("overview") + f"?Ano={selected_year}&Mes={selected_month}&view=individual")
+# --------- Observação importante sobre assets/.keep ----------
+# Não tem problema nenhum o /assets estar "no topo" do repositório.
+# É exatamente isso que a gente quer: app.py e a pasta assets no mesmo nível.
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
