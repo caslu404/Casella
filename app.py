@@ -37,24 +37,55 @@ RATEIO_CANON = {
 
 # Sugestões (não trava)
 SUGGESTED_CATEGORIES = [
-    "Alimentação",
+    "Água",
+    "Aluguel",
     "Assinaturas e Serviços Digitais",
-    "Carro",
+    "Associados Amazon",
+    "Bônus / PLR",
+    "Cashback",
     "Combustível",
     "Compras Online Diversas",
     "Compras Pessoais",
+    "Condomínio",
     "Contas da Casa",
-    "Pets",
-    "Presentes",
-    "Saúde",
-    "Supermercado e Itens Domésticos",
-    "Mercado",
-    "Itens de Casa",
-    "Transporte",
-    "Viagens e Lazer",
-    "Academia",
+    "Delivery",
+    "Diarista",
+    "Estacionamento",
+    "Exames",
+    "Farmácia",
+    "Freelance / Serviços",
+    "Gás",
+    "Internet",
+    "IPVA",
+    "Itens Domésticos",
+    "Lazer",
+    "Licenciamento",
     "Lura",
+    "Luz",
+    "Manutenção da Casa",
+    "Manutenção do Carro",
     "Outros",
+    "Pedágio",
+    "Pets Areia / Higiene",
+    "Pets Brinquedos e Acessórios",
+    "Pets Comida",
+    "Pets Farmácia",
+    "Pets Outros",
+    "Pets Pet Shop",
+    "Pets Plano de Saúde",
+    "Pets Veterinário",
+    "Plano de Saúde",
+    "Presentes",
+    "Psicólogo",
+    "Reembolso",
+    "Restaurantes",
+    "Salário",
+    "Seguro do Carro",
+    "Streaming",
+    "Supermercado",
+    "Transporte",
+    "Venda de itens",
+    "Viagens",
 ]
 
 # Fixos (aparecem no topo apenas quando a lista do mês está aberta)
@@ -70,7 +101,7 @@ FIXOS = [
 PENDENTES = [
     {"key": "luz", "label": "Luz", "categoria": "Contas da Casa"},
     {"key": "gas", "label": "Gás", "categoria": "Contas da Casa"},
-    {"key": "empregada", "label": "Empregada", "categoria": "Contas da Casa"},
+    {"key": "diarista", "label": "Diarista", "categoria": "Contas da Casa"},
 ]
 
 BASE_CSS = """
@@ -574,6 +605,15 @@ def _canon_rateio(x: str) -> str:
         return RATEIO_CANON[x]
     return x  # deixa passar para erro de validação, se for algo desconhecido
 
+def _canon_tipo(x: str) -> str:
+    t = _normalize_str(x).lower().replace(" ", "")
+    t = t.replace("í", "i").replace("á", "a").replace("ã", "a")
+    if t == "entrada":
+        return "Entrada"
+    if t in {"saida", "saída"}:
+        return "Saida"
+    return _normalize_str(x)
+
 def read_excel_from_bytes(raw: bytes) -> pd.DataFrame:
     buf = io.BytesIO(raw)
 
@@ -584,12 +624,12 @@ def read_excel_from_bytes(raw: bytes) -> pd.DataFrame:
     # normaliza os headers se existirem
     df.columns = [_canon_col(c) for c in df.columns]
 
-    # MODO CURTO: ordem do print (Data, Dono, Categoria, Descricao, Valor, Rateio)
-    # Importante: você pediu para não travar header; então a regra é: se tiver 6+ colunas,
-    # pegamos as 6 primeiras por posição e forçamos essa ordem.
-    if len(df.columns) >= 6:
-        df_short = df.iloc[:, :6].copy()
-        df_short.columns = ["Data", "Dono", "Categoria", "Descricao", "Valor", "Rateio"]
+    # MODO TEMPLATE (novo):
+    # Tipo, Data, Dono, Categoria, Descricao, Valor, Rateio, Observacao
+    # Regra por posição para evitar quebra por header inesperado.
+    if len(df.columns) >= 8:
+        df_short = df.iloc[:, :8].copy()
+        df_short.columns = ["Tipo", "Data", "Dono", "Categoria", "Descricao", "Valor", "Rateio", "Observacao"]
 
         # Data: sem validação de formato
         df_short["Data"] = df_short["Data"].apply(lambda v: "" if pd.isna(v) else str(v))
@@ -597,15 +637,16 @@ def read_excel_from_bytes(raw: bytes) -> pd.DataFrame:
         # Valor
         df_short["Valor"] = df_short["Valor"].apply(_parse_money)
 
-        # Tipo inferido pelo sinal
-        df_short["Tipo"] = df_short["Valor"].apply(lambda x: "Entrada" if float(x or 0) < 0 else "Saida")
+        # Tipo vem explícito no template
+        df_short["Tipo"] = df_short["Tipo"].apply(_canon_tipo)
+
+        # Valor sempre positivo (Entrada/Saida é definido por Tipo)
         df_short["Valor"] = df_short["Valor"].apply(lambda x: abs(float(x or 0)))
 
         # Estabelecimento é a descrição
         df_short["Estabelecimento"] = df_short["Descricao"].apply(_normalize_str)
 
-        # Observacao / Parcela vazios
-        df_short["Observacao"] = ""
+        # Parcela vazio no template base
         df_short["Parcela"] = ""
 
         # strings
@@ -615,7 +656,7 @@ def read_excel_from_bytes(raw: bytes) -> pd.DataFrame:
 
         return df_short
 
-    raise ValueError("Arquivo inválido: precisa ter pelo menos 6 colunas (Data, Dono, Categoria, Descrição, Valor, Rateio)")
+    raise ValueError("Arquivo inválido: precisa ter pelo menos 8 colunas (Tipo, Data, Dono, Categoria, Descrição, Valor, Rateio, Observação)")
 
 def validate_transactions(df: pd.DataFrame):
     errors = []
@@ -624,7 +665,7 @@ def validate_transactions(df: pd.DataFrame):
     for idx, row in df.iterrows():
         line_number = idx + 2
 
-        tipo = _normalize_str(row.get("Tipo"))
+        tipo = _canon_tipo(row.get("Tipo"))
         resp = _normalize_str(row.get("Dono"))  # responsabilidade
         rateio_raw = _normalize_str(row.get("Rateio"))
         rateio = _canon_rateio(rateio_raw)
@@ -1320,9 +1361,8 @@ def month_selector_block(selected_year: str, selected_month: str, action_url: st
     """
 
 def template_path():
-    # template que você colocou no repo: /assets/Template_Financas_Casella.xlsx
-    # (não precisa .keep; mas não tem problema ter)
-    return os.path.join(os.path.dirname(__file__), "assets", "Template_Financas_Casella.xlsx")
+    # template principal
+    return os.path.join(os.path.dirname(__file__), "assets", "Template_Casella.xlsx")
 
 # ---------------- ROUTES ----------------
 
@@ -1408,9 +1448,19 @@ def logout():
 def download_template():
     # baixa o template do repo
     folder = os.path.join(os.path.dirname(__file__), "assets")
-    filename = "Template_Financas_Casella.xlsx"
-    if not os.path.exists(os.path.join(folder, filename)):
-        return "Template não encontrado em /assets. Suba o arquivo com esse nome.", 404
+    candidates = [
+        "Template_Casella.xlsx",
+        "template_finanças_caseia.xlsx",
+        "Template_Financas_Casella.xlsx",
+        "Template__Financas__Casella.xlsx",
+    ]
+    filename = ""
+    for c in candidates:
+        if os.path.exists(os.path.join(folder, c)):
+            filename = c
+            break
+    if not filename:
+        return "Template não encontrado em /assets. Suba o arquivo como Template_Casella.xlsx.", 404
     return send_from_directory(folder, filename, as_attachment=True)
 
 @app.route("/investimentos", methods=["GET", "POST"])
