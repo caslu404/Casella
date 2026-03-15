@@ -377,32 +377,7 @@ def init_db():
       created_at TEXT NOT NULL
     )
     """)
-    if not _col_exists(conn, "imports", "file_hash"):
-        cur.execute("ALTER TABLE imports ADD COLUMN file_hash TEXT")
-    if not _col_exists(conn, "imports", "source"):
-        cur.execute("ALTER TABLE imports ADD COLUMN source TEXT")
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      batch_id TEXT NOT NULL,
-      month_ref TEXT NOT NULL,
-      uploaded_by TEXT NOT NULL,
-      dt_text TEXT,
-      estabelecimento TEXT,
-      categoria TEXT,
-      valor REAL NOT NULL,
-      tipo TEXT NOT NULL,
-      dono TEXT NOT NULL,     -- aqui é "Responsabilidade"
-      rateio TEXT NOT NULL,   -- canônico: 60_40, 50_50, 100_meu, 100_outro
-      observacao TEXT,
-      parcela TEXT,
-      created_at TEXT NOT NULL
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS incomes (
+@@ -345,99 +397,117 @@ def init_db():
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       month_ref TEXT NOT NULL,
       profile TEXT NOT NULL,
@@ -520,31 +495,7 @@ def compute_file_hash(raw_bytes: bytes) -> str:
 
 # ------------ IMPORT FLEXÍVEL (suporta seu input do print) ------------
 
-_CANON = {
-    "data": "Data",
-    "dono": "Dono",
-    "responsabilidade": "Dono",
-    "categoria": "Categoria",
-    "descrição": "Descricao",
-    "descricao": "Descricao",
-    "estabelecimento": "Estabelecimento",
-    "valor": "Valor",
-    "rateio": "Rateio",
-    "tipo": "Tipo",
-    "observacao": "Observacao",
-    "observação": "Observacao",
-    "parcela": "Parcela",
-}
-
-def _canon_col(c: str) -> str:
-    c = _normalize_str(c)
-    key = c.lower()
-    return _CANON.get(key, c)
-
-def _parse_money(v) -> float:
-    """
-    Aceita número/moeda do Excel, com/sem R$, com ponto/vírgula, negativo/positivo.
-    """
+@@ -469,107 +539,159 @@ def _parse_money(v) -> float:
     if v is None:
         return 0.0
     try:
@@ -704,104 +655,7 @@ def validate_transactions(df: pd.DataFrame):
         # regras de coerência
         if resp == "Casa" and rateio not in {"60_40", "50_50"}:
             errors.append(f"Linha {line_number}: Responsabilidade Casa só permite rateio 60/40 ou 50/50")
-
-        if resp in {"Lucas", "Rafa"} and rateio in {"60_40", "50_50"}:
-            errors.append(f"Linha {line_number}: Rateio 60/40 ou 50/50 exige Responsabilidade Casa")
-
-        normalized_rows.append(
-            {
-                "Data": _normalize_str(row.get("Data")),
-                "Estabelecimento": _normalize_str(row.get("Estabelecimento")),
-                "Categoria": _normalize_str(row.get("Categoria")),
-                "Valor": valor_f,
-                "Tipo": tipo,
-                "Dono": resp,
-                "Rateio": rateio,
-                "Observacao": _normalize_str(row.get("Observacao")),
-                "Parcela": _normalize_str(row.get("Parcela")),
-            }
-        )
-
-    return errors, normalized_rows
-
-# ------------ DB HELPERS ------------
-
-def _insert_import(conn, batch_id, month_ref, uploaded_by, filename, row_count, status, created_at, file_hash, source):
-    cur = conn.cursor()
-    cur.execute("""
-      INSERT INTO imports (batch_id, month_ref, uploaded_by, filename, row_count, status, created_at, file_hash, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (batch_id, month_ref, uploaded_by, filename, row_count, status, created_at, file_hash, source))
-
-def _insert_transaction(conn, batch_id, month_ref, uploaded_by, r, created_at):
-    cur = conn.cursor()
-    cur.execute("""
-      INSERT INTO transactions
-      (batch_id, month_ref, uploaded_by, dt_text, estabelecimento, categoria, valor, tipo, dono, rateio, observacao, parcela, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        batch_id,
-        month_ref,
-        uploaded_by,
-        r.get("Data", ""),
-        r.get("Estabelecimento", ""),
-        r.get("Categoria", ""),
-        float(r.get("Valor") or 0),
-        r.get("Tipo", ""),
-        r.get("Dono", ""),
-        r.get("Rateio", ""),
-        r.get("Observacao", ""),
-        r.get("Parcela", ""),
-        created_at
-    ))
-
-def is_duplicate_import(month_ref: str, uploaded_by: str, file_hash: str) -> bool:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-      SELECT 1
-      FROM imports
-      WHERE month_ref = ?
-        AND uploaded_by = ?
-        AND file_hash = ?
-        AND status = 'imported'
-      LIMIT 1
-    """, (month_ref, uploaded_by, file_hash))
-    hit = cur.fetchone() is not None
-    conn.close()
-    return hit
-
-def create_preview_batch(month_ref: str, uploaded_by: str, filename: str, rows: list, file_hash: str) -> str:
-    batch_id = uuid.uuid4().hex
-    now = dt.datetime.utcnow().isoformat(timespec="seconds")
-
-    conn = get_db()
-    _insert_import(conn, batch_id, month_ref, uploaded_by, filename, len(rows), "preview", now, file_hash, "excel")
-    for r in rows:
-        _insert_transaction(conn, batch_id, month_ref, uploaded_by, r, now)
-
-    conn.commit()
-    conn.close()
-    return batch_id
-
-def finalize_import(batch_id: str, profile: str) -> tuple[bool, str]:
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT * FROM imports WHERE batch_id = ?", (batch_id,))
-    imp = cur.fetchone()
-    if not imp:
-        conn.close()
-        return False, "Importação não encontrada"
-
-    if imp["uploaded_by"] != profile:
-        conn.close()
-        return False, "Você só pode importar batches criados no seu perfil"
-
-    if imp["status"] == "imported":
-        conn.close()
-        return False, "Esse batch já foi importado"
-
+@@ -674,50 +796,113 @@ def finalize_import(batch_id: str, profile: str) -> tuple[bool, str]:
     cur.execute("UPDATE imports SET status = 'imported' WHERE batch_id = ?", (batch_id,))
     conn.commit()
     conn.close()
@@ -826,6 +680,69 @@ def delete_batch(batch_id: str, profile: str) -> tuple[bool, str]:
     conn.commit()
     conn.close()
     return True, "Importação excluída"
+
+def fetch_transaction_by_id(tx_id: int):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+      SELECT t.*, i.status
+      FROM transactions t
+      JOIN imports i ON i.batch_id = t.batch_id
+      WHERE t.id = ?
+      LIMIT 1
+    """, (tx_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+def delete_transaction(tx_id: int, profile: str) -> tuple[bool, str]:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT uploaded_by FROM transactions WHERE id = ?", (tx_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return False, "Lançamento não encontrado"
+    if row["uploaded_by"] != profile:
+        conn.close()
+        return False, "Você só pode excluir lançamentos do seu perfil"
+
+    cur.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+    conn.commit()
+    conn.close()
+    return True, "Lançamento excluído"
+
+def update_transaction(tx_id: int, profile: str, row: dict) -> tuple[bool, str]:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT uploaded_by FROM transactions WHERE id = ?", (tx_id,))
+    found = cur.fetchone()
+    if not found:
+        conn.close()
+        return False, "Lançamento não encontrado"
+    if found["uploaded_by"] != profile:
+        conn.close()
+        return False, "Você só pode editar lançamentos do seu perfil"
+
+    cur.execute("""
+      UPDATE transactions
+      SET dt_text = ?, estabelecimento = ?, categoria = ?, valor = ?, tipo = ?, dono = ?, rateio = ?, observacao = ?, parcela = ?
+      WHERE id = ?
+    """, (
+        row.get("Data", ""),
+        row.get("Estabelecimento", ""),
+        row.get("Categoria", ""),
+        float(row.get("Valor") or 0),
+        row.get("Tipo", ""),
+        row.get("Dono", ""),
+        row.get("Rateio", ""),
+        row.get("Observacao", ""),
+        row.get("Parcela", ""),
+        tx_id,
+    ))
+    conn.commit()
+    conn.close()
+    return True, "Lançamento atualizado"
 
 def fetch_transaction_by_id(tx_id: int):
     conn = get_db()
@@ -915,138 +832,7 @@ def fetch_house_transactions(month_ref: str):
       WHERE t.month_ref = ?
         AND i.status = 'imported'
         AND t.dono = 'Casa'
-        AND t.rateio IN ('60_40','50_50')
-      ORDER BY t.id ASC
-    """, (month_ref,))
-    rows = cur.fetchall()
-    conn.close()
-    return rows
-
-def signed_value(tipo: str, valor: float) -> float:
-    # Entrada reduz gasto (reembolso)
-    if tipo == "Entrada":
-        return -abs(valor)
-    return abs(valor)
-
-def share_for(profile: str, rateio: str) -> float:
-    if rateio == "50_50":
-        return 0.5
-    if rateio == "60_40":
-        return LUCAS_SHARE if profile == "Lucas" else RAFA_SHARE
-    return 0.0
-
-def compute_casa(month_ref: str):
-    rows = fetch_house_transactions(month_ref)
-
-    total_casa = 0.0
-    paid_lucas = 0.0
-    paid_rafa = 0.0
-    expected_lucas = 0.0
-    expected_rafa = 0.0
-    by_category = {}
-
-    for r in rows:
-        val = signed_value(r["tipo"], r["valor"])
-        total_casa += val
-
-        cat = r["categoria"] or "Sem categoria"
-        if cat not in by_category:
-            by_category[cat] = {"total": 0.0, "lucas": 0.0, "rafa": 0.0, "items": []}
-        by_category[cat]["total"] += val
-        by_category[cat]["items"].append(r)
-
-        # "quem pagou de fato" é uploaded_by
-        if r["uploaded_by"] == "Lucas":
-            paid_lucas += val
-            by_category[cat]["lucas"] += val
-        elif r["uploaded_by"] == "Rafa":
-            paid_rafa += val
-            by_category[cat]["rafa"] += val
-
-        if r["rateio"] == "60_40":
-            expected_lucas += val * LUCAS_SHARE
-            expected_rafa += val * RAFA_SHARE
-        elif r["rateio"] == "50_50":
-            expected_lucas += val * 0.5
-            expected_rafa += val * 0.5
-
-    lucas_diff = paid_lucas - expected_lucas
-    rafa_diff = paid_rafa - expected_rafa
-
-    settlement_text = "Sem acerto necessário"
-    settlement_value = 0.0
-    if lucas_diff > 0.01:
-        settlement_text = "Rafa deve passar para Lucas"
-        settlement_value = lucas_diff
-    elif rafa_diff > 0.01:
-        settlement_text = "Lucas deve passar para Rafa"
-        settlement_value = rafa_diff
-
-    cats_sorted = sorted(by_category.items(), key=lambda x: x[1]["total"], reverse=True)
-
-    return {
-        "total_casa": total_casa,
-        "paid_lucas": paid_lucas,
-        "paid_rafa": paid_rafa,
-        "expected_lucas": expected_lucas,
-        "expected_rafa": expected_rafa,
-        "settlement_text": settlement_text,
-        "settlement_value": settlement_value,
-        "cats_sorted": cats_sorted,
-    }
-
-def get_income(month_ref: str, profile: str):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-      SELECT salario_1, salario_2, extras
-      FROM incomes
-      WHERE month_ref = ? AND profile = ?
-    """, (month_ref, profile))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        return {"salario_1": 0.0, "salario_2": 0.0, "extras": 0.0, "total": 0.0}
-    s1 = float(row["salario_1"] or 0)
-    s2 = float(row["salario_2"] or 0)
-    ex = float(row["extras"] or 0)
-    return {"salario_1": s1, "salario_2": s2, "extras": ex, "total": s1 + s2 + ex}
-
-def upsert_income(month_ref: str, profile: str, salario_1: float, salario_2: float, extras: float):
-    now = dt.datetime.utcnow().isoformat(timespec="seconds")
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT id FROM incomes WHERE month_ref = ? AND profile = ?", (month_ref, profile))
-    exists = cur.fetchone() is not None
-
-    if exists:
-        cur.execute("""
-          UPDATE incomes
-          SET salario_1 = ?, salario_2 = ?, extras = ?, updated_at = ?
-          WHERE month_ref = ? AND profile = ?
-        """, (salario_1, salario_2, extras, now, month_ref, profile))
-    else:
-        cur.execute("""
-          INSERT INTO incomes (month_ref, profile, salario_1, salario_2, extras, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (month_ref, profile, salario_1, salario_2, extras, now, now))
-
-    conn.commit()
-    conn.close()
-
-def get_investment(month_ref: str, profile: str):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-      SELECT amount, note
-      FROM investments
-      WHERE month_ref = ? AND profile = ?
-    """, (month_ref, profile))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        return {"amount": 0.0, "note": ""}
+@@ -856,93 +1041,253 @@ def get_investment(month_ref: str, profile: str):
     return {"amount": float(row["amount"] or 0), "note": row["note"] or ""}
 
 def upsert_investment(month_ref: str, profile: str, amount: float, note: str):
@@ -1300,55 +1086,7 @@ def compute_individual(month_ref: str, profile: str):
         "saldo_pos_pagamentos": saldo_pos_pagamentos,
         "saldo_em_conta": saldo_em_conta,
         "cats_house": cats_house,
-        "cats_personal": cats_personal,
-    }
-
-def create_manual_batch(month_ref: str, uploaded_by: str, row: dict) -> str:
-    batch_id = uuid.uuid4().hex
-    now = dt.datetime.utcnow().isoformat(timespec="seconds")
-
-    conn = get_db()
-    _insert_import(conn, batch_id, month_ref, uploaded_by, "manual_entry", 1, "imported", now, None, "manual")
-    _insert_transaction(conn, batch_id, month_ref, uploaded_by, row, now)
-
-    conn.commit()
-    conn.close()
-    return batch_id
-
-def get_lock(month_ref: str, profile: str) -> bool:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT locked FROM month_locks WHERE month_ref = ? AND profile = ?", (month_ref, profile))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        return False
-    return int(row["locked"] or 0) == 1
-
-def set_lock(month_ref: str, profile: str, locked: bool):
-    now = dt.datetime.utcnow().isoformat(timespec="seconds")
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM month_locks WHERE month_ref = ? AND profile = ?", (month_ref, profile))
-    exists = cur.fetchone() is not None
-    if exists:
-        cur.execute("UPDATE month_locks SET locked = ?, locked_at = ? WHERE month_ref = ? AND profile = ?",
-                    (1 if locked else 0, now if locked else None, month_ref, profile))
-    else:
-        cur.execute("INSERT INTO month_locks (month_ref, profile, locked, locked_at) VALUES (?, ?, ?, ?)",
-                    (month_ref, profile, 1 if locked else 0, now if locked else None))
-    conn.commit()
-    conn.close()
-
-def year_month_select_html(selected_year: str, selected_month: str):
-    year_options = "".join([
-        f"<option value='{y}' {'selected' if str(y)==str(selected_year) else ''}>{y}</option>"
-        for y in range(2024, 2031)
-    ])
-    month_options = "".join([
-        f"<option value='{m:02d}' {'selected' if f'{m:02d}'==str(selected_month) else ''}>{m:02d}</option>"
-        for m in range(1, 13)
-    ])
+@@ -998,53 +1343,52 @@ def year_month_select_html(selected_year: str, selected_month: str):
     return year_options, month_options
 
 def month_selector_block(selected_year: str, selected_month: str, action_url: str):
@@ -1401,42 +1139,7 @@ def home():
               <a class="btn btnPrimary btnLucas" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Lucas')}">Entrar como Lucas</a>
               <a class="btn btnPrimary btnRafa" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Rafa')}">Entrar como Rafa</a>
             </div>
-            <p class="small" style="margin-top:12px;">Sem senha no MVP. Só para evitar confusão de perfil.</p>
-          </div>
-        </div>
-      </body>
-    </html>
-    """
-    return html
-
-@app.route("/set_profile/<profile>")
-@app.route("/set-profile/<profile>")
-def set_profile(profile: str):
-    profile = profile.strip()
-    if profile not in ALLOWED_PROFILES:
-        return "Perfil inválido", 400
-    session["profile"] = profile
-    return redirect(url_for("overview"))
-
-@app.route("/perfil")
-def perfil():
-    profile = session.get("profile", "")
-    if not profile:
-        return redirect(url_for("home"))
-
-    html = f"""
-    <!doctype html>
-    <html lang="pt-br">
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Perfil</title>
-        {BASE_CSS}
-      </head>
-      <body>
-        {topbar_html(profile, "perfil")}
-        <div class="wrap">
-          <div class="card">
+@@ -1086,801 +1430,914 @@ def perfil():
             <h2>Perfil</h2>
             <p>Trocar perfil.</p>
             <div class="grid2" style="margin-top:14px;">
@@ -1544,6 +1247,7 @@ def investimentos():
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Investimentos</title>
         {BASE_CSS}
+        {DASHBOARD_CSS}
       </head>
       <body>
         {topbar_html(profile, "investimentos")}
@@ -1612,7 +1316,7 @@ def overview():
         casa = {"cats_sorted": [], "total_cost": 0.0}
         ind = {"cats_personal": [], "income": {"total": 0.0}, "expenses_effective": 0.0, "saldo_em_conta": 0.0}
         invest_total = 0.0
-        inv_hist = {"labels": [], "map": {}, "totals": [], "cur_total": 0.0, "prev_total": 0.0, "ctc": 0.0, "mom": None, "prev_ref": _month_ref_shift(month_ref, -1)}
+        inv_hist = {"labels": [], "map": {}, "totals": [], "cur_total": 0.0, "prev_total": 0.0, "ctc": 0.0, "mom_pct": None}
 
     def category_details_html(cat, obj):
         rows = ""
