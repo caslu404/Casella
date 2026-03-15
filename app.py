@@ -11,7 +11,7 @@ import pandas as pd
 app = Flask(__name__)
 app.secret_key = "dev-secret-change-later"
 
-DB_PATH = "data.db"
+DB_PATH = os.getenv("DB_PATH", "data.db")
 
 # Split padrão (Rafa ganha mais)
 LUCAS_SHARE = 0.40
@@ -340,6 +340,9 @@ def month_ref_from(year_str: str, month_str: str) -> str:
     return f"{year_str}{month_str}"
 
 def get_db():
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
