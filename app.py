@@ -2215,7 +2215,7 @@ def transacoes():
         </div>
         """
 
-    lock_banner = f"<span class='pill'>Mês {'FECHADO' if lock else 'ABERTO'} para {profile}</span>"
+    lock_banner = f"<span class='pill'>Mês {'Fechado' if lock else 'Aberto'} para {profile}</span>"
     lock_controls = (
         f"<form method='post'><input type='hidden' name='Ano' value='{selected_year}'><input type='hidden' name='Mes' value='{selected_month}'><input type='hidden' name='action' value='unlock'><button class='btn btnGhost' type='submit'>Editar mês</button></form>"
         if lock else
@@ -2262,10 +2262,10 @@ def transacoes():
             <p class='small'>Clique no botão para abrir o input desejado.</p>
 
             <div class='row' style='margin:10px 0 12px;'>
-              <button id='btnReceitaTop' class='btn btnIncome' type='button' {'disabled' if lock else ''}>+ RECEITA</button>
-              <button id='btnDespesaTop' class='btn btnExpense' type='button' {'disabled' if lock else ''}>- DESPESA</button>
-              <button id='btnUploadTop' class='btn btnGhost' type='button' {'disabled' if lock else ''}>UPLOAD</button>
-              <a class='btn btnGhost' href='{url_for('download_template')}'>DOWNLOAD TEMPLATE</a>
+              <button id='btnReceitaTop' class='btn btnIncome' type='button' {'disabled' if lock else ''}>+ Receita</button>
+              <button id='btnDespesaTop' class='btn btnExpense' type='button' {'disabled' if lock else ''}>- Despesa</button>
+              <button id='btnUploadTop' class='btn btnGhost' type='button' {'disabled' if lock else ''}>Upload</button>
+              <a class='btn btnGhost' href='{url_for('download_template')}'>Download Template</a>
             </div>
 
             <div id='manualPanel' style='display:none;'>
