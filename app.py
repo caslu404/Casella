@@ -5,6 +5,7 @@ import sqlite3
 import datetime as dt
 import uuid
 import hashlib
+import json
 import pandas as pd
 
 app = Flask(__name__)
@@ -75,20 +76,20 @@ PENDENTES = [
 BASE_CSS = """
 <style>
   :root{
-    --bg1:#f7f8ff;
-    --bg2:#f6fffb;
-    --card:#ffffff;
-    --text:#0f172a;
-    --muted:#64748b;
-    --border: rgba(15,23,42,.08);
-    --shadow: 0 14px 40px rgba(15,23,42,.08);
+    --bg1:#0b1020;
+    --bg2:#131c35;
+    --card:rgba(15,23,42,.48);
+    --text:#e6edf8;
+    --muted:#a4b4cf;
+    --border: rgba(148,163,184,.22);
+    --shadow: 0 18px 42px rgba(2,8,23,.45);
     --radius: 18px;
     --lucas1:#1d4ed8;
     --lucas2:#60a5fa;
     --rafa1:#16a34a;
     --rafa2:#86efac;
-    --neutral1:#111827;
-    --neutral2:#94a3b8;
+    --neutral1:#2563eb;
+    --neutral2:#1d4ed8;
   }
 
   *{box-sizing:border-box}
@@ -96,9 +97,9 @@ BASE_CSS = """
     margin:0;
     font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif;
     color:var(--text);
-    background: radial-gradient(1200px 600px at 20% 0%, var(--bg1) 0%, rgba(255,255,255,0) 60%),
-                radial-gradient(1200px 600px at 80% 0%, var(--bg2) 0%, rgba(255,255,255,0) 60%),
-                linear-gradient(180deg, #ffffff 0%, #fbfbff 100%);
+    background: radial-gradient(1200px 700px at 20% 0%, rgba(37,99,235,.24) 0%, rgba(11,16,32,0) 58%),
+                radial-gradient(1000px 640px at 85% 0%, rgba(20,184,166,.14) 0%, rgba(11,16,32,0) 55%),
+                linear-gradient(180deg, #070b16 0%, #0d1427 100%);
     min-height:100vh;
   }
 
@@ -107,7 +108,7 @@ BASE_CSS = """
     top:0;
     z-index:5;
     backdrop-filter: blur(10px);
-    background: rgba(255,255,255,.7);
+    background: rgba(7,11,22,.72);
     border-bottom: 1px solid var(--border);
   }
 
@@ -121,7 +122,7 @@ BASE_CSS = """
     padding:6px 10px;
     border-radius:999px;
     border:1px solid var(--border);
-    background: rgba(255,255,255,.7);
+    background: rgba(15,23,42,.58);
     font-size:12px;
     color:var(--muted);
   }
@@ -133,7 +134,7 @@ BASE_CSS = """
   .dot{
     width:10px; height:10px; border-radius:999px;
     background: linear-gradient(135deg, var(--neutral1), var(--neutral2));
-    box-shadow: 0 0 0 4px rgba(15,23,42,.06);
+    box-shadow: 0 0 0 4px rgba(37,99,235,.18);
   }
   .dot.lucas{background: linear-gradient(135deg, var(--lucas1), var(--lucas2));}
   .dot.rafa{background: linear-gradient(135deg, var(--rafa1), var(--rafa2));}
@@ -147,11 +148,12 @@ BASE_CSS = """
   .btn{
     appearance:none;
     border: 1px solid var(--border);
-    background: rgba(255,255,255,.8);
+    background: rgba(15,23,42,.66);
     color: var(--text);
     padding: 10px 14px;
     border-radius: 14px;
     font-weight: 800;
+    font-size: 15px;
     cursor:pointer;
     text-decoration:none;
     display:inline-flex;
@@ -160,20 +162,20 @@ BASE_CSS = """
     gap:8px;
     transition: transform .06s ease, box-shadow .12s ease, border-color .12s ease;
   }
-  .btn:hover{border-color: rgba(15,23,42,.20); box-shadow: 0 10px 22px rgba(15,23,42,.08);}
+  .btn:hover{border-color: rgba(96,165,250,.52); box-shadow: 0 10px 26px rgba(59,130,246,.25);}
   .btn:active{transform: translateY(1px);}
 
   .btnPrimary{
     border:0;
     color:white;
-    box-shadow: 0 16px 32px rgba(29,78,216,.18);
+    box-shadow: 0 16px 30px rgba(37,99,235,.34);
     background: linear-gradient(135deg, var(--neutral1), var(--neutral2));
   }
-  .btnLucas{ background: linear-gradient(135deg, var(--lucas1), var(--lucas2)); box-shadow: 0 16px 32px rgba(29,78,216,.18); }
-  .btnRafa{ background: linear-gradient(135deg, var(--rafa1), var(--rafa2)); box-shadow: 0 16px 32px rgba(22,163,74,.18); }
+  .btnLucas{ background: linear-gradient(135deg, var(--lucas1), var(--lucas2)); box-shadow: 0 16px 30px rgba(37,99,235,.3); }
+  .btnRafa{ background: linear-gradient(135deg, var(--rafa1), var(--rafa2)); box-shadow: 0 16px 30px rgba(22,163,74,.28); }
 
   .btnGhost{
-    background: rgba(255,255,255,.55);
+    background: rgba(15,23,42,.46);
   }
 
   .btnDanger{
@@ -183,7 +185,7 @@ BASE_CSS = """
   }
 
   .card{
-    background: rgba(255,255,255,.85);
+    background: rgba(15,23,42,.5);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 16px;
@@ -191,16 +193,21 @@ BASE_CSS = """
     margin-top: 14px;
   }
 
-  h1,h2,h3{margin:0 0 10px;}
+  h1{margin:0 0 10px; font-size:30px; line-height:1.15;}
+  h2{margin:0 0 10px; font-size:26px; line-height:1.2;}
+  h3{margin:0 0 10px; font-size:22px; line-height:1.2;}
+  h4{margin:0 0 8px; font-size:18px; line-height:1.25;}
   p{margin:0 0 10px; color: var(--muted);}
 
-  label{font-weight:800; display:block; margin: 10px 0 6px;}
+  label{font-weight:800; display:block; margin: 10px 0 6px; font-size:14px;}
   input[type="text"], input[type="number"], input[type="file"], input[type="date"], select, textarea{
     width:100%;
     padding: 10px 12px;
     border-radius: 14px;
     border:1px solid var(--border);
-    background: rgba(255,255,255,.9);
+    background: rgba(2,6,23,.46);
+    color: var(--text);
+    font-size:14px;
     outline:none;
   }
   textarea{min-height:90px; resize:vertical;}
@@ -213,7 +220,7 @@ BASE_CSS = """
   .kpi .box{
     border:1px solid var(--border);
     border-radius: 16px;
-    background: rgba(255,255,255,.85);
+    background: rgba(15,23,42,.42);
     padding: 12px;
   }
   .kpi .label{font-size:12px; color: var(--muted); margin-bottom:6px;}
@@ -221,27 +228,27 @@ BASE_CSS = """
 
   .right{text-align:right}
   .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
-  .small{font-size:12px; color: var(--muted);}
+  .small{font-size:13px; color: var(--muted);}
 
   .okBox{
     border:1px solid rgba(22,163,74,.25);
-    background: rgba(22,163,74,.06);
+    background: rgba(22,163,74,.16);
     padding: 12px;
     border-radius: 14px;
   }
   .errorBox{
     border:1px solid rgba(185,28,28,.25);
-    background: rgba(185,28,28,.06);
+    background: rgba(185,28,28,.18);
     padding: 12px;
     border-radius: 14px;
   }
 
   table{width:100%; border-collapse: collapse; margin-top:10px;}
-  th,td{border-bottom:1px solid rgba(15,23,42,.06); padding: 10px 8px; vertical-align: top; font-size:13px;}
-  th{color:#334155; background: rgba(248,250,252,.8); position: sticky; top: 58px; z-index:2;}
+  th,td{border-bottom:1px solid rgba(148,163,184,.16); padding: 10px 8px; vertical-align: top; font-size:14px;}
+  th{color:#cbd5e1; background: rgba(15,23,42,.88); position: sticky; top: 58px; z-index:2;}
   details{
     border: 1px solid rgba(15,23,42,.06);
-    background: rgba(255,255,255,.65);
+    background: rgba(15,23,42,.42);
     border-radius: 14px;
     padding: 10px 12px;
     margin-top: 10px;
@@ -252,10 +259,21 @@ BASE_CSS = """
     padding:6px 10px;
     border-radius:999px;
     border:1px solid rgba(15,23,42,.08);
-    background: rgba(255,255,255,.6);
+    background: rgba(30,41,59,.62);
     font-size:12px;
-    color: #334155;
+    color: #cbd5e1;
   }
+
+  .controlBar{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+  .selectCompact{
+    min-width:140px;
+    width:auto !important;
+    border-radius:12px;
+    background: rgba(2,6,23,.56);
+  }
+  .btnIncome{border:0; color:white; background: linear-gradient(135deg,#10b981,#34d399);}
+  .btnExpense{border:0; color:white; background: linear-gradient(135deg,#ef4444,#f43f5e);}
+  .is-active{box-shadow:0 0 0 2px rgba(255,255,255,.25) inset, 0 8px 20px rgba(59,130,246,.28);}
 
   @media (max-width: 900px){
     .grid4,.grid3,.grid2,.kpi{grid-template-columns: 1fr;}
@@ -364,6 +382,19 @@ def init_db():
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       UNIQUE(month_ref, profile)
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS investment_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      month_ref TEXT NOT NULL,
+      profile TEXT NOT NULL,
+      label TEXT NOT NULL,
+      amount REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(month_ref, profile, label)
     )
     """)
 
@@ -987,6 +1018,161 @@ def upsert_investment(month_ref: str, profile: str, amount: float, note: str):
     conn.commit()
     conn.close()
 
+def list_investment_items(month_ref: str, profile: str):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+      SELECT label, amount
+      FROM investment_items
+      WHERE month_ref = ? AND profile = ?
+      ORDER BY label ASC
+    """, (month_ref, profile))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+def replace_investment_items(month_ref: str, profile: str, items: list[tuple[str, float]]):
+    now = dt.datetime.utcnow().isoformat(timespec="seconds")
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM investment_items WHERE month_ref = ? AND profile = ?", (month_ref, profile))
+    for label, amount in items:
+        cur.execute("""
+          INSERT INTO investment_items (month_ref, profile, label, amount, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        """, (month_ref, profile, label, float(amount or 0), now, now))
+    conn.commit()
+    conn.close()
+
+def upsert_investment_item(month_ref: str, profile: str, label: str, amount: float):
+    now = dt.datetime.utcnow().isoformat(timespec="seconds")
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+      SELECT id FROM investment_items
+      WHERE month_ref = ? AND profile = ? AND label = ?
+    """, (month_ref, profile, label))
+    exists = cur.fetchone() is not None
+
+    if exists:
+        cur.execute("""
+          UPDATE investment_items
+          SET amount = ?, updated_at = ?
+          WHERE month_ref = ? AND profile = ? AND label = ?
+        """, (float(amount or 0), now, month_ref, profile, label))
+    else:
+        cur.execute("""
+          INSERT INTO investment_items (month_ref, profile, label, amount, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        """, (month_ref, profile, label, float(amount or 0), now, now))
+
+    conn.commit()
+    conn.close()
+
+def get_total_investments(month_ref: str, profile: str) -> float:
+    items = list_investment_items(month_ref, profile)
+    items_total = sum([float(r["amount"] or 0) for r in items])
+    legacy_total = float(get_investment(month_ref, profile).get("amount", 0) or 0)
+    return max(items_total, legacy_total)
+
+def _month_ref_shift(month_ref: str, delta: int) -> str:
+    y = int(month_ref[:4])
+    m = int(month_ref[4:6])
+    m += delta
+    while m <= 0:
+        y -= 1
+        m += 12
+    while m > 12:
+        y += 1
+        m -= 12
+    return f"{y}{m:02d}"
+
+def last_n_month_refs(month_ref: str, n: int = 12):
+    refs = []
+    for i in range(n-1, -1, -1):
+        refs.append(_month_ref_shift(month_ref, -i))
+    return refs
+
+def month_label_br(month_ref: str) -> str:
+    names = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+    y = month_ref[:4]
+    m = int(month_ref[4:6])
+    return f"{names[m-1]}/{y[2:]}"
+
+def month_name_pt(month_num: str) -> str:
+    names = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+    try:
+        m = int(month_num)
+        return names[m-1]
+    except:
+        return str(month_num)
+
+def compute_category_history(month_ref: str, mode: str, profile: str):
+    refs = last_n_month_refs(month_ref, 12)
+    cat_map = {}
+    for rref in refs:
+        rows = fetch_imported_transactions(rref)
+        for r in rows:
+            val = max(signed_value(r["tipo"], r["valor"]), 0.0)
+            cat = r["categoria"] or "Sem categoria"
+            if mode == "casa":
+                if r["dono"] != "Casa":
+                    continue
+            else:
+                if not (r["uploaded_by"] == profile and r["dono"] == profile):
+                    continue
+            if cat not in cat_map:
+                cat_map[cat] = [0.0 for _ in refs]
+            idx = refs.index(rref)
+            cat_map[cat][idx] += val
+
+    top = sorted(cat_map.items(), key=lambda x: sum(x[1]), reverse=True)[:8]
+    labels = [month_label_br(x) for x in refs]
+    return labels, {k: [round(v, 2) for v in arr] for k, arr in top}
+
+def compute_investment_history(month_ref: str, profile: str):
+    refs = last_n_month_refs(month_ref, 12)
+    cat_map = {}
+    totals = []
+
+    for rref in refs:
+        rows = list_investment_items(rref, profile)
+        month_total = 0.0
+        for r in rows:
+            cat = _normalize_str(r["label"]) or "Sem categoria"
+            val = float(r["amount"] or 0)
+            month_total += val
+            if cat not in cat_map:
+                cat_map[cat] = [0.0 for _ in refs]
+            idx = refs.index(rref)
+            cat_map[cat][idx] += val
+        totals.append(round(month_total, 2))
+
+    top = sorted(cat_map.items(), key=lambda x: sum(x[1]), reverse=True)[:10]
+    labels = [month_label_br(x) for x in refs]
+    out_map = {k: [round(v, 2) for v in arr] for k, arr in top}
+
+    prev_ref = _month_ref_shift(month_ref, -1)
+    cur_total = sum([float(r["amount"] or 0) for r in list_investment_items(month_ref, profile)])
+    prev_total = sum([float(r["amount"] or 0) for r in list_investment_items(prev_ref, profile)])
+    ctc = cur_total - prev_total
+    mom = None
+    if prev_total > 0:
+        mom = ((cur_total - prev_total) / prev_total) * 100
+    elif cur_total > 0:
+        mom = 100.0
+
+    return {
+        "labels": labels,
+        "map": out_map,
+        "totals": totals,
+        "cur_total": round(cur_total, 2),
+        "prev_total": round(prev_total, 2),
+        "ctc": round(ctc, 2),
+        "mom": mom,
+        "prev_ref": prev_ref,
+    }
+
 def compute_individual(month_ref: str, profile: str):
     rows = fetch_imported_transactions(month_ref)
 
@@ -1034,7 +1220,7 @@ def compute_individual(month_ref: str, profile: str):
 
     income = {"salario_1": 0.0, "salario_2": 0.0, "extras": income_total, "total": income_total}
     inv = get_investment(month_ref, profile)
-    invested = float(inv["amount"] or 0)
+    invested = get_total_investments(month_ref, profile)
 
     expenses_effective = house_total + my_personal_total + payable_total
     saldo_pos_pagamentos = income["total"] - expenses_effective
@@ -1227,6 +1413,117 @@ def download_template():
         return "Template não encontrado em /assets. Suba o arquivo com esse nome.", 404
     return send_from_directory(folder, filename, as_attachment=True)
 
+@app.route("/investimentos", methods=["GET", "POST"])
+def investimentos():
+    profile = session.get("profile", "")
+    if not profile:
+        return redirect(url_for("home"))
+
+    now_y, now_m = current_year_month()
+    selected_year = request.values.get("Ano") or str(now_y)
+    selected_month = request.values.get("Mes") or f"{now_m:02d}"
+    month_ref = month_ref_from(selected_year, selected_month)
+
+    msg = ""
+
+    categorias_base = [
+        "NuCaixinha",
+        "NuTurbo",
+        "NuTotal",
+        "Vested Amazon",
+        "Previdência",
+        "Ações",
+        "CDI",
+    ]
+    categorias = sorted(categorias_base, key=lambda x: x.lower())
+
+    categoria = _normalize_str(request.values.get("categoria")) or categorias[0]
+    if categoria not in categorias:
+        categoria = categorias[0]
+
+    current_items = {r["label"]: float(r["amount"] or 0) for r in list_investment_items(month_ref, profile)}
+    valor = float(current_items.get(categoria, 0) or 0)
+
+    if request.method == "POST":
+        valor = max(parse_num_br(request.form.get("valor", "0")), 0.0)
+        categoria = _normalize_str(request.form.get("categoria")) or categorias[0]
+        if categoria not in categorias:
+            categoria = categorias[0]
+
+        upsert_investment_item(month_ref, profile, categoria, valor)
+        current_items[categoria] = valor
+        total_now = sum(current_items.values())
+        upsert_investment(month_ref, profile, total_now, "Atualização por categoria")
+        msg = f"Investimento atualizado para {categoria}."
+
+    current_items = {r["label"]: float(r["amount"] or 0) for r in list_investment_items(month_ref, profile)}
+    valor = float(current_items.get(categoria, 0) or 0)
+
+    prev_ref = _month_ref_shift(month_ref, -1)
+    prev_items = {r["label"]: float(r["amount"] or 0) for r in list_investment_items(prev_ref, profile)}
+    prev_valor = float(prev_items.get(categoria, 0) or 0)
+    ctc_valor = valor - prev_valor
+    mom_pct_text = "N/A"
+    if prev_valor > 0:
+        mom_pct_text = f"{((valor - prev_valor) / prev_valor) * 100:.2f}%"
+    elif valor > 0:
+        mom_pct_text = "100.00%"
+
+    total_now = sum(current_items.values())
+    cat_opts = "".join([f"<option value='{c}' {'selected' if c == categoria else ''}>{c}</option>" for c in categorias])
+
+    html = f"""
+    <!doctype html>
+    <html lang="pt-br">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Investimentos</title>
+        {BASE_CSS}
+      </head>
+      <body>
+        {topbar_html(profile, "investimentos")}
+        <div class="wrap">
+          <div class="card">
+            <h2>Investimentos</h2>
+            <p>Atualização mensal por categoria (valor total daquela categoria no mês).</p>
+            {month_selector_block(selected_year, selected_month, url_for('investimentos'))}
+          </div>
+
+          {f"<div class='card'><div class='okBox'><b>{msg}</b></div></div>" if msg else ""}
+
+          <div class="card">
+            <h3>Input do mês</h3>
+            <form method="post">
+              <input type="hidden" name="Ano" value="{selected_year}">
+              <input type="hidden" name="Mes" value="{selected_month}">
+              <div class="grid2">
+                <div>
+                  <label>Valor</label>
+                  <input type="text" name="valor" value="{valor:.2f}" placeholder="Ex.: 15000,00">
+                </div>
+                <div>
+                  <label>Categoria</label>
+                  <select name="categoria">{cat_opts}</select>
+                </div>
+              </div>
+              <div class="row" style="margin-top:12px;">
+                <button class="btn btnPrimary" type="submit">Salvar</button>
+                <span class="pill">Valor da categoria: <b>{brl(valor)}</b></span>
+                <span class="pill">Mês anterior ({prev_ref}): <b>{brl(prev_valor)}</b></span>
+                <span class="pill">MoM%: <b>{mom_pct_text}</b></span>
+                <span class="pill">CtC (R$): <b>{brl(ctc_valor)}</b></span>
+                <span class="pill">Total consolidado do mês: <b>{brl(total_now)}</b></span>
+              </div>
+            </form>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+    return html
+
+
 @app.route("/overview")
 def overview():
     profile = session.get("profile", "")
@@ -1238,15 +1535,16 @@ def overview():
     selected_month = request.args.get("Mes") or f"{now_m:02d}"
     month_ref = month_ref_from(selected_year, selected_month)
 
-    mode = request.args.get("mode") or "casa"  # casa | individual
+    mode = request.args.get("mode") or "casa"  # casa | individual | investimentos
 
     casa = compute_casa(month_ref)
     ind = compute_individual(month_ref, profile)
+    invest_total = get_total_investments(month_ref, profile)
+    inv_hist = compute_investment_history(month_ref, profile)
 
     def category_details_html(cat, obj):
-        # detalhes do que compõe aquela categoria (casa)
         rows = ""
-        items = obj.get("items", [])
+        items = obj.get("items", []) if isinstance(obj, dict) else []
         for r in items[:500]:
             val = signed_value(r["tipo"], r["valor"])
             rows += f"""
@@ -1263,69 +1561,82 @@ def overview():
             rows = "<tr><td colspan='6' class='small'>Sem itens</td></tr>"
         return f"""
         <details>
-          <summary>{cat} <span class="tag" style="margin-left:10px;">Total {brl(obj['total'])}</span></summary>
+          <summary>{cat} <span class="tag" style="margin-left:10px;">Total {brl(obj['total']) if isinstance(obj, dict) else brl(obj)}</span></summary>
           <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Descrição</th>
-                <th class="right">Valor</th>
-                <th>Tipo</th>
-                <th>Pago por</th>
-                <th>Rateio</th>
-              </tr>
-            </thead>
+            <thead><tr><th>Data</th><th>Descrição</th><th class="right">Valor</th><th>Tipo</th><th>Pago por</th><th>Rateio</th></tr></thead>
             <tbody>{rows}</tbody>
           </table>
         </details>
         """
 
-    # Toggle
+    if mode == "casa":
+        category_items = casa["cats_sorted"]
+        line_labels, line_map = compute_category_history(month_ref, "casa", profile)
+        receitas = 0.0
+        despesas = 0.0
+        for cat, obj in category_items:
+            v = float(obj.get("total") or 0)
+            if v >= 0:
+                despesas += v
+            else:
+                receitas += abs(v)
+        saldo = receitas - despesas
+    elif mode == "individual":
+        category_items = [(cat, val) for cat, val in ind["cats_personal"]]
+        line_labels, line_map = compute_category_history(month_ref, "individual", profile)
+        receitas = ind["income"]["total"]
+        despesas = ind["expenses_effective"]
+        saldo = ind["saldo_em_conta"]
+    else:
+        category_items = sorted(inv_hist["map"].items(), key=lambda x: sum(x[1]), reverse=True)
+        line_labels, line_map = inv_hist["labels"], inv_hist["map"]
+        receitas = 0.0
+        despesas = 0.0
+        saldo = inv_hist["cur_total"]
+
+    pie_labels = [cat for cat, _ in category_items[:8]]
+    pie_values = []
+    for _, val in category_items[:8]:
+        if isinstance(val, dict):
+            pie_values.append(round(max(float(val.get("total", 0)), 0), 2))
+        elif isinstance(val, (int, float)):
+            pie_values.append(round(max(float(val), 0), 2))
+        else:
+            pie_values.append(round(max(sum([float(x or 0) for x in val]), 0), 2))
+
+    pie_colors = ["#5ea1ff", "#ef4444", "#f59e0b", "#9ca3af", "#34d399", "#a78bfa", "#fb7185", "#22d3ee"]
+
     toggle = f"""
     <div class="row" style="margin-top:10px;">
       <a class="btn {'btnPrimary' if mode=='casa' else 'btnGhost'}" href="{url_for('overview')}?Ano={selected_year}&Mes={selected_month}&mode=casa">Casa</a>
       <a class="btn {'btnPrimary' if mode=='individual' else 'btnGhost'}" href="{url_for('overview')}?Ano={selected_year}&Mes={selected_month}&mode=individual">Individual</a>
+      <a class="btn {'btnPrimary' if mode=='investimentos' else 'btnGhost'}" href="{url_for('overview')}?Ano={selected_year}&Mes={selected_month}&mode=investimentos">Investimentos</a>
     </div>
     """
 
-    # Casa view
-    casa_block = ""
     if mode == "casa":
         cats_details = "".join([category_details_html(cat, obj) for cat, obj in casa["cats_sorted"]])
-        settle_line = f"{casa['settlement_text']}: {brl(casa['settlement_value'])}"
-        casa_block = f"""
-          <div class="card">
-            <h3>Resumo da Casa</h3>
-            <div class="kpi">
-              <div class="box">
-                <div class="label">Total Casa</div>
-                <div class="value">{brl(casa["total_casa"])}</div>
-              </div>
-              <div class="box">
-                <div class="label">Pago Lucas</div>
-                <div class="value">{brl(casa["paid_lucas"])}</div>
-                <div class="small">Deveria: {brl(casa["expected_lucas"])}</div>
-              </div>
-              <div class="box">
-                <div class="label">Pago Rafa</div>
-                <div class="value">{brl(casa["paid_rafa"])}</div>
-                <div class="small">Deveria: {brl(casa["expected_rafa"])}</div>
-              </div>
-              <div class="box">
-                <div class="label">Acerto</div>
-                <div class="value">{brl(casa["settlement_value"])}</div>
-                <div class="small">{casa["settlement_text"]}</div>
-              </div>
+        empty_msg = "<p class='small'>Sem itens.</p>"
+        detail_block = f"<div class='card'><h3>Categorias Casa</h3>{cats_details if cats_details else empty_msg}</div>"
+    elif mode == "individual":
+        rows = "".join([f"<tr><td>{cat}</td><td class='right'>{brl(val)}</td></tr>" for cat, val in ind["cats_personal"]]) or "<tr><td colspan='2' class='small'>Sem dados</td></tr>"
+        detail_block = f"<div class='card'><h3>Meu pessoal por categoria</h3><table><thead><tr><th>Categoria</th><th class='right'>Valor</th></tr></thead><tbody>{rows}</tbody></table></div>"
+    else:
+        inv_rows = ""
+        for cat, vals in sorted(inv_hist["map"].items(), key=lambda x: sum(x[1]), reverse=True):
+            inv_rows += f"<tr><td>{cat}</td><td class='right'>{brl(sum(vals))}</td></tr>"
+        if not inv_rows:
+            inv_rows = "<tr><td colspan='2' class='small'>Sem dados de investimentos.</td></tr>"
+        mom_txt = "N/A" if inv_hist["mom"] is None else f"{inv_hist['mom']:.2f}%"
+        detail_block = f"""
+          <div class='card'>
+            <h3>Investimentos por categoria (acumulado janela)</h3>
+            <table><thead><tr><th>Categoria</th><th class='right'>Acumulado</th></tr></thead><tbody>{inv_rows}</tbody></table>
+            <div class='row' style='margin-top:10px;'>
+              <span class='pill'>Mês anterior ({inv_hist['prev_ref']}): <b>{brl(inv_hist['prev_total'])}</b></span>
+              <span class='pill'>MoM%: <b>{mom_txt}</b></span>
+              <span class='pill'>CtC (R$): <b>{brl(inv_hist['ctc'])}</b></span>
             </div>
-
-            <div class="okBox" style="margin-top:12px;">
-              <b>Acerto do mês</b><br/>{settle_line}
-            </div>
-          </div>
-
-          <div class="card">
-            <h3>Categorias (clique para ver os itens)</h3>
-            {cats_details if cats_details else "<p class='small'>Sem itens de Casa importados para este mês.</p>"}
           </div>
         """
 
@@ -1423,15 +1734,16 @@ def overview():
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Overview</title>
+        <title>Dashboard</title>
         {BASE_CSS}
+        {DASHBOARD_CSS}
       </head>
       <body>
         {topbar_html(profile, "overview")}
         <div class="wrap">
-          <div class="card">
-            <h2>Overview</h2>
-            <p>Visão do mês (Casa e Individual).</p>
+          <div class="card darkBoard">
+            <h2>Dashboard</h2>
+            <p style="color:#94a3b8;">Visão geral Casa, Individual e Investimentos no mesmo Overview.</p>
             {month_selector_block(selected_year, selected_month, url_for('overview'))}
             {toggle}
           </div>
@@ -1474,6 +1786,7 @@ def transacoes():
 
     preview_rows = []
     preview_batch_id = ""
+    open_panel = _normalize_str(request.values.get("panel")) or ""
 
     manual_defaults = {
         "Data": "",
@@ -1555,6 +1868,7 @@ def transacoes():
                         errors.append(msg)
 
             elif action == "manual":
+                open_panel = "manual"
                 form_data = dict(manual_defaults)
                 for k in form_data.keys():
                     form_data[k] = _normalize_str(request.form.get(k))
@@ -1605,6 +1919,7 @@ def transacoes():
                     info = f"Transação adicionada (repetida por {repetir_total} mês(es))"
 
             elif action == "excel_preview":
+                open_panel = "upload"
                 file = request.files.get("file")
                 if not file or file.filename.strip() == "":
                     errors.append("Arquivo obrigatório")
