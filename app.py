@@ -337,7 +337,16 @@ def current_year_month():
     return today.year, today.month
 
 def month_ref_from(year_str: str, month_str: str) -> str:
-    return f"{year_str}{month_str}"
+    try:
+        y = int(str(year_str).strip())
+    except:
+        y = dt.date.today().year
+    try:
+        m = int(str(month_str).strip())
+    except:
+        m = dt.date.today().month
+    m = min(max(m, 1), 12)
+    return f"{y:04d}{m:02d}"
 
 def get_db():
     db_dir = os.path.dirname(DB_PATH)
@@ -671,6 +680,69 @@ def delete_batch(batch_id: str, profile: str) -> tuple[bool, str]:
     conn.commit()
     conn.close()
     return True, "Importação excluída"
+
+def fetch_transaction_by_id(tx_id: int):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+      SELECT t.*, i.status
+      FROM transactions t
+      JOIN imports i ON i.batch_id = t.batch_id
+      WHERE t.id = ?
+      LIMIT 1
+    """, (tx_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+def delete_transaction(tx_id: int, profile: str) -> tuple[bool, str]:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT uploaded_by FROM transactions WHERE id = ?", (tx_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return False, "Lançamento não encontrado"
+    if row["uploaded_by"] != profile:
+        conn.close()
+        return False, "Você só pode excluir lançamentos do seu perfil"
+
+    cur.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+    conn.commit()
+    conn.close()
+    return True, "Lançamento excluído"
+
+def update_transaction(tx_id: int, profile: str, row: dict) -> tuple[bool, str]:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT uploaded_by FROM transactions WHERE id = ?", (tx_id,))
+    found = cur.fetchone()
+    if not found:
+        conn.close()
+        return False, "Lançamento não encontrado"
+    if found["uploaded_by"] != profile:
+        conn.close()
+        return False, "Você só pode editar lançamentos do seu perfil"
+
+    cur.execute("""
+      UPDATE transactions
+      SET dt_text = ?, estabelecimento = ?, categoria = ?, valor = ?, tipo = ?, dono = ?, rateio = ?, observacao = ?, parcela = ?
+      WHERE id = ?
+    """, (
+        row.get("Data", ""),
+        row.get("Estabelecimento", ""),
+        row.get("Categoria", ""),
+        float(row.get("Valor") or 0),
+        row.get("Tipo", ""),
+        row.get("Dono", ""),
+        row.get("Rateio", ""),
+        row.get("Observacao", ""),
+        row.get("Parcela", ""),
+        tx_id,
+    ))
+    conn.commit()
+    conn.close()
+    return True, "Lançamento atualizado"
 
 def fetch_transaction_by_id(tx_id: int):
     conn = get_db()
@@ -1175,6 +1247,7 @@ def investimentos():
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Investimentos</title>
         {BASE_CSS}
+        {DASHBOARD_CSS}
       </head>
       <body>
         {topbar_html(profile, "investimentos")}
