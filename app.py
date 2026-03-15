@@ -1762,13 +1762,16 @@ def overview():
             </div>
           </div>
 
-          <div class="card">
-            <h3>Minha parte da casa por categoria</h3>
-            <table>
-              <thead><tr><th>Categoria</th><th class="right">Valor</th></tr></thead>
-              <tbody>{rows_from(ind["cats_house"])}</tbody>
-            </table>
-          </div>
+    if mode == "investimentos":
+        receitas_label = "MoM%"
+        receitas_value = "N/A" if inv_hist["mom"] is None else f"{inv_hist['mom']:.2f}%"
+        despesas_label = "CtC (R$)"
+        despesas_value = brl(inv_hist["ctc"])
+    else:
+        receitas_label = "Receitas"
+        receitas_value = brl(receitas)
+        despesas_label = "Despesas"
+        despesas_value = brl(despesas)
 
           <div class="card">
             <h3>Meu pessoal por categoria</h3>
