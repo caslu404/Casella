@@ -368,32 +368,7 @@ def init_db():
       created_at TEXT NOT NULL
     )
     """)
-    if not _col_exists(conn, "imports", "file_hash"):
-        cur.execute("ALTER TABLE imports ADD COLUMN file_hash TEXT")
-    if not _col_exists(conn, "imports", "source"):
-        cur.execute("ALTER TABLE imports ADD COLUMN source TEXT")
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      batch_id TEXT NOT NULL,
-      month_ref TEXT NOT NULL,
-      uploaded_by TEXT NOT NULL,
-      dt_text TEXT,
-      estabelecimento TEXT,
-      categoria TEXT,
-      valor REAL NOT NULL,
-      tipo TEXT NOT NULL,
-      dono TEXT NOT NULL,     -- aqui é "Responsabilidade"
-      rateio TEXT NOT NULL,   -- canônico: 60_40, 50_50, 100_meu, 100_outro
-      observacao TEXT,
-      parcela TEXT,
-      created_at TEXT NOT NULL
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS incomes (
+@@ -345,99 +397,117 @@ def init_db():
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       month_ref TEXT NOT NULL,
       profile TEXT NOT NULL,
@@ -483,6 +458,7 @@ def topbar_html(profile: str, active: str = "overview"):
     <div class="nav">
       {nav_btn("Overview", url_for("overview"), "overview")}
       {nav_btn("Transações", url_for("transacoes"), "transacoes")}
+      {nav_btn("Investimentos", url_for("investimentos"), "investimentos")}
       {nav_btn("Perfil", url_for("perfil"), "perfil")}
       <span class="pill">Competência: <b>{selected_year}/{selected_month}</b></span>
     </div>
@@ -510,31 +486,7 @@ def compute_file_hash(raw_bytes: bytes) -> str:
 
 # ------------ IMPORT FLEXÍVEL (suporta seu input do print) ------------
 
-_CANON = {
-    "data": "Data",
-    "dono": "Dono",
-    "responsabilidade": "Dono",
-    "categoria": "Categoria",
-    "descrição": "Descricao",
-    "descricao": "Descricao",
-    "estabelecimento": "Estabelecimento",
-    "valor": "Valor",
-    "rateio": "Rateio",
-    "tipo": "Tipo",
-    "observacao": "Observacao",
-    "observação": "Observacao",
-    "parcela": "Parcela",
-}
-
-def _canon_col(c: str) -> str:
-    c = _normalize_str(c)
-    key = c.lower()
-    return _CANON.get(key, c)
-
-def _parse_money(v) -> float:
-    """
-    Aceita número/moeda do Excel, com/sem R$, com ponto/vírgula, negativo/positivo.
-    """
+@@ -469,107 +539,159 @@ def _parse_money(v) -> float:
     if v is None:
         return 0.0
     try:
@@ -694,104 +646,7 @@ def validate_transactions(df: pd.DataFrame):
         # regras de coerência
         if resp == "Casa" and rateio not in {"60_40", "50_50"}:
             errors.append(f"Linha {line_number}: Responsabilidade Casa só permite rateio 60/40 ou 50/50")
-
-        if resp in {"Lucas", "Rafa"} and rateio in {"60_40", "50_50"}:
-            errors.append(f"Linha {line_number}: Rateio 60/40 ou 50/50 exige Responsabilidade Casa")
-
-        normalized_rows.append(
-            {
-                "Data": _normalize_str(row.get("Data")),
-                "Estabelecimento": _normalize_str(row.get("Estabelecimento")),
-                "Categoria": _normalize_str(row.get("Categoria")),
-                "Valor": valor_f,
-                "Tipo": tipo,
-                "Dono": resp,
-                "Rateio": rateio,
-                "Observacao": _normalize_str(row.get("Observacao")),
-                "Parcela": _normalize_str(row.get("Parcela")),
-            }
-        )
-
-    return errors, normalized_rows
-
-# ------------ DB HELPERS ------------
-
-def _insert_import(conn, batch_id, month_ref, uploaded_by, filename, row_count, status, created_at, file_hash, source):
-    cur = conn.cursor()
-    cur.execute("""
-      INSERT INTO imports (batch_id, month_ref, uploaded_by, filename, row_count, status, created_at, file_hash, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (batch_id, month_ref, uploaded_by, filename, row_count, status, created_at, file_hash, source))
-
-def _insert_transaction(conn, batch_id, month_ref, uploaded_by, r, created_at):
-    cur = conn.cursor()
-    cur.execute("""
-      INSERT INTO transactions
-      (batch_id, month_ref, uploaded_by, dt_text, estabelecimento, categoria, valor, tipo, dono, rateio, observacao, parcela, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        batch_id,
-        month_ref,
-        uploaded_by,
-        r.get("Data", ""),
-        r.get("Estabelecimento", ""),
-        r.get("Categoria", ""),
-        float(r.get("Valor") or 0),
-        r.get("Tipo", ""),
-        r.get("Dono", ""),
-        r.get("Rateio", ""),
-        r.get("Observacao", ""),
-        r.get("Parcela", ""),
-        created_at
-    ))
-
-def is_duplicate_import(month_ref: str, uploaded_by: str, file_hash: str) -> bool:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-      SELECT 1
-      FROM imports
-      WHERE month_ref = ?
-        AND uploaded_by = ?
-        AND file_hash = ?
-        AND status = 'imported'
-      LIMIT 1
-    """, (month_ref, uploaded_by, file_hash))
-    hit = cur.fetchone() is not None
-    conn.close()
-    return hit
-
-def create_preview_batch(month_ref: str, uploaded_by: str, filename: str, rows: list, file_hash: str) -> str:
-    batch_id = uuid.uuid4().hex
-    now = dt.datetime.utcnow().isoformat(timespec="seconds")
-
-    conn = get_db()
-    _insert_import(conn, batch_id, month_ref, uploaded_by, filename, len(rows), "preview", now, file_hash, "excel")
-    for r in rows:
-        _insert_transaction(conn, batch_id, month_ref, uploaded_by, r, now)
-
-    conn.commit()
-    conn.close()
-    return batch_id
-
-def finalize_import(batch_id: str, profile: str) -> tuple[bool, str]:
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT * FROM imports WHERE batch_id = ?", (batch_id,))
-    imp = cur.fetchone()
-    if not imp:
-        conn.close()
-        return False, "Importação não encontrada"
-
-    if imp["uploaded_by"] != profile:
-        conn.close()
-        return False, "Você só pode importar batches criados no seu perfil"
-
-    if imp["status"] == "imported":
-        conn.close()
-        return False, "Esse batch já foi importado"
-
+@@ -674,50 +796,113 @@ def finalize_import(batch_id: str, profile: str) -> tuple[bool, str]:
     cur.execute("UPDATE imports SET status = 'imported' WHERE batch_id = ?", (batch_id,))
     conn.commit()
     conn.close()
@@ -905,138 +760,7 @@ def fetch_house_transactions(month_ref: str):
       WHERE t.month_ref = ?
         AND i.status = 'imported'
         AND t.dono = 'Casa'
-        AND t.rateio IN ('60_40','50_50')
-      ORDER BY t.id ASC
-    """, (month_ref,))
-    rows = cur.fetchall()
-    conn.close()
-    return rows
-
-def signed_value(tipo: str, valor: float) -> float:
-    # Entrada reduz gasto (reembolso)
-    if tipo == "Entrada":
-        return -abs(valor)
-    return abs(valor)
-
-def share_for(profile: str, rateio: str) -> float:
-    if rateio == "50_50":
-        return 0.5
-    if rateio == "60_40":
-        return LUCAS_SHARE if profile == "Lucas" else RAFA_SHARE
-    return 0.0
-
-def compute_casa(month_ref: str):
-    rows = fetch_house_transactions(month_ref)
-
-    total_casa = 0.0
-    paid_lucas = 0.0
-    paid_rafa = 0.0
-    expected_lucas = 0.0
-    expected_rafa = 0.0
-    by_category = {}
-
-    for r in rows:
-        val = signed_value(r["tipo"], r["valor"])
-        total_casa += val
-
-        cat = r["categoria"] or "Sem categoria"
-        if cat not in by_category:
-            by_category[cat] = {"total": 0.0, "lucas": 0.0, "rafa": 0.0, "items": []}
-        by_category[cat]["total"] += val
-        by_category[cat]["items"].append(r)
-
-        # "quem pagou de fato" é uploaded_by
-        if r["uploaded_by"] == "Lucas":
-            paid_lucas += val
-            by_category[cat]["lucas"] += val
-        elif r["uploaded_by"] == "Rafa":
-            paid_rafa += val
-            by_category[cat]["rafa"] += val
-
-        if r["rateio"] == "60_40":
-            expected_lucas += val * LUCAS_SHARE
-            expected_rafa += val * RAFA_SHARE
-        elif r["rateio"] == "50_50":
-            expected_lucas += val * 0.5
-            expected_rafa += val * 0.5
-
-    lucas_diff = paid_lucas - expected_lucas
-    rafa_diff = paid_rafa - expected_rafa
-
-    settlement_text = "Sem acerto necessário"
-    settlement_value = 0.0
-    if lucas_diff > 0.01:
-        settlement_text = "Rafa deve passar para Lucas"
-        settlement_value = lucas_diff
-    elif rafa_diff > 0.01:
-        settlement_text = "Lucas deve passar para Rafa"
-        settlement_value = rafa_diff
-
-    cats_sorted = sorted(by_category.items(), key=lambda x: x[1]["total"], reverse=True)
-
-    return {
-        "total_casa": total_casa,
-        "paid_lucas": paid_lucas,
-        "paid_rafa": paid_rafa,
-        "expected_lucas": expected_lucas,
-        "expected_rafa": expected_rafa,
-        "settlement_text": settlement_text,
-        "settlement_value": settlement_value,
-        "cats_sorted": cats_sorted,
-    }
-
-def get_income(month_ref: str, profile: str):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-      SELECT salario_1, salario_2, extras
-      FROM incomes
-      WHERE month_ref = ? AND profile = ?
-    """, (month_ref, profile))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        return {"salario_1": 0.0, "salario_2": 0.0, "extras": 0.0, "total": 0.0}
-    s1 = float(row["salario_1"] or 0)
-    s2 = float(row["salario_2"] or 0)
-    ex = float(row["extras"] or 0)
-    return {"salario_1": s1, "salario_2": s2, "extras": ex, "total": s1 + s2 + ex}
-
-def upsert_income(month_ref: str, profile: str, salario_1: float, salario_2: float, extras: float):
-    now = dt.datetime.utcnow().isoformat(timespec="seconds")
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT id FROM incomes WHERE month_ref = ? AND profile = ?", (month_ref, profile))
-    exists = cur.fetchone() is not None
-
-    if exists:
-        cur.execute("""
-          UPDATE incomes
-          SET salario_1 = ?, salario_2 = ?, extras = ?, updated_at = ?
-          WHERE month_ref = ? AND profile = ?
-        """, (salario_1, salario_2, extras, now, month_ref, profile))
-    else:
-        cur.execute("""
-          INSERT INTO incomes (month_ref, profile, salario_1, salario_2, extras, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (month_ref, profile, salario_1, salario_2, extras, now, now))
-
-    conn.commit()
-    conn.close()
-
-def get_investment(month_ref: str, profile: str):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-      SELECT amount, note
-      FROM investments
-      WHERE month_ref = ? AND profile = ?
-    """, (month_ref, profile))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        return {"amount": 0.0, "note": ""}
+@@ -856,93 +1041,253 @@ def get_investment(month_ref: str, profile: str):
     return {"amount": float(row["amount"] or 0), "note": row["note"] or ""}
 
 def upsert_investment(month_ref: str, profile: str, amount: float, note: str):
@@ -1290,55 +1014,7 @@ def compute_individual(month_ref: str, profile: str):
         "saldo_pos_pagamentos": saldo_pos_pagamentos,
         "saldo_em_conta": saldo_em_conta,
         "cats_house": cats_house,
-        "cats_personal": cats_personal,
-    }
-
-def create_manual_batch(month_ref: str, uploaded_by: str, row: dict) -> str:
-    batch_id = uuid.uuid4().hex
-    now = dt.datetime.utcnow().isoformat(timespec="seconds")
-
-    conn = get_db()
-    _insert_import(conn, batch_id, month_ref, uploaded_by, "manual_entry", 1, "imported", now, None, "manual")
-    _insert_transaction(conn, batch_id, month_ref, uploaded_by, row, now)
-
-    conn.commit()
-    conn.close()
-    return batch_id
-
-def get_lock(month_ref: str, profile: str) -> bool:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT locked FROM month_locks WHERE month_ref = ? AND profile = ?", (month_ref, profile))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
-        return False
-    return int(row["locked"] or 0) == 1
-
-def set_lock(month_ref: str, profile: str, locked: bool):
-    now = dt.datetime.utcnow().isoformat(timespec="seconds")
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM month_locks WHERE month_ref = ? AND profile = ?", (month_ref, profile))
-    exists = cur.fetchone() is not None
-    if exists:
-        cur.execute("UPDATE month_locks SET locked = ?, locked_at = ? WHERE month_ref = ? AND profile = ?",
-                    (1 if locked else 0, now if locked else None, month_ref, profile))
-    else:
-        cur.execute("INSERT INTO month_locks (month_ref, profile, locked, locked_at) VALUES (?, ?, ?, ?)",
-                    (month_ref, profile, 1 if locked else 0, now if locked else None))
-    conn.commit()
-    conn.close()
-
-def year_month_select_html(selected_year: str, selected_month: str):
-    year_options = "".join([
-        f"<option value='{y}' {'selected' if str(y)==str(selected_year) else ''}>{y}</option>"
-        for y in range(2024, 2031)
-    ])
-    month_options = "".join([
-        f"<option value='{m:02d}' {'selected' if f'{m:02d}'==str(selected_month) else ''}>{m:02d}</option>"
-        for m in range(1, 13)
-    ])
+@@ -998,53 +1343,52 @@ def year_month_select_html(selected_year: str, selected_month: str):
     return year_options, month_options
 
 def month_selector_block(selected_year: str, selected_month: str, action_url: str):
@@ -1391,41 +1067,7 @@ def home():
               <a class="btn btnPrimary btnLucas" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Lucas')}">Entrar como Lucas</a>
               <a class="btn btnPrimary btnRafa" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Rafa')}">Entrar como Rafa</a>
             </div>
-            <p class="small" style="margin-top:12px;">Sem senha no MVP. Só para evitar confusão de perfil.</p>
-          </div>
-        </div>
-      </body>
-    </html>
-    """
-    return html
-
-@app.route("/set_profile/<profile>")
-def set_profile(profile: str):
-    profile = profile.strip()
-    if profile not in ALLOWED_PROFILES:
-        return "Perfil inválido", 400
-    session["profile"] = profile
-    return redirect(url_for("overview"))
-
-@app.route("/perfil")
-def perfil():
-    profile = session.get("profile", "")
-    if not profile:
-        return redirect(url_for("home"))
-
-    html = f"""
-    <!doctype html>
-    <html lang="pt-br">
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Perfil</title>
-        {BASE_CSS}
-      </head>
-      <body>
-        {topbar_html(profile, "perfil")}
-        <div class="wrap">
-          <div class="card">
+@@ -1086,801 +1430,914 @@ def perfil():
             <h2>Perfil</h2>
             <p>Trocar perfil.</p>
             <div class="grid2" style="margin-top:14px;">
@@ -1590,10 +1232,18 @@ def overview():
 
     mode = request.args.get("mode") or "casa"  # casa | individual | investimentos
 
-    casa = compute_casa(month_ref)
-    ind = compute_individual(month_ref, profile)
-    invest_total = get_total_investments(month_ref, profile)
-    inv_hist = compute_investment_history(month_ref, profile)
+    overview_error = ""
+    try:
+        casa = compute_casa(month_ref)
+        ind = compute_individual(month_ref, profile)
+        invest_total = get_total_investments(month_ref, profile)
+        inv_hist = compute_investment_history(month_ref, profile)
+    except Exception as e:
+        overview_error = f"Erro ao carregar overview: {e}"
+        casa = {"cats_sorted": [], "total_cost": 0.0}
+        ind = {"cats_personal": [], "income": {"total": 0.0}, "expenses_effective": 0.0, "saldo_em_conta": 0.0}
+        invest_total = 0.0
+        inv_hist = {"labels": [], "map": {}, "totals": [], "cur_total": 0.0, "prev_total": 0.0, "ctc": 0.0, "mom_pct": None}
 
     def category_details_html(cat, obj):
         rows = ""
@@ -1624,7 +1274,10 @@ def overview():
 
     if mode == "casa":
         category_items = casa["cats_sorted"]
-        line_labels, line_map = compute_category_history(month_ref, "casa", profile)
+        try:
+            line_labels, line_map = compute_category_history(month_ref, "casa", profile)
+        except Exception:
+            line_labels, line_map = [], {}
         receitas = 0.0
         despesas = 0.0
         for cat, obj in category_items:
@@ -1636,7 +1289,10 @@ def overview():
         saldo = receitas - despesas
     elif mode == "individual":
         category_items = [(cat, val) for cat, val in ind["cats_personal"]]
-        line_labels, line_map = compute_category_history(month_ref, "individual", profile)
+        try:
+            line_labels, line_map = compute_category_history(month_ref, "individual", profile)
+        except Exception:
+            line_labels, line_map = [], {}
         receitas = ind["income"]["total"]
         despesas = ind["expenses_effective"]
         saldo = ind["saldo_em_conta"]
@@ -1693,74 +1349,31 @@ def overview():
           </div>
         """
 
-    # Individual view
-    individual_block = ""
-    if mode == "individual":
-        personal_detail_map = {}
-        for r in fetch_imported_transactions(month_ref):
-            if r["uploaded_by"] == profile and r["dono"] == profile and r["rateio"] == "100_meu":
-                cat = r["categoria"] or "Sem categoria"
-                personal_detail_map.setdefault(cat, []).append(r)
+    chart_data = json.dumps({
+        "mode": mode,
+        "pie_labels": pie_labels,
+        "pie_values": pie_values,
+        "pie_colors": pie_colors,
+        "line_labels": line_labels,
+        "line_map": line_map,
+        "inv_totals": inv_hist["totals"],
+    })
 
-        def cat_detail(cat, total, rows):
-            lines = ""
-            for r in rows[:200]:
-                lines += f"<tr><td>{_normalize_str(r['dt_text'])}</td><td>{_normalize_str(r['estabelecimento'])}</td><td class='right'>{brl(signed_value(r['tipo'], r['valor']))}</td><td>{_normalize_str(r['tipo'])}</td></tr>"
-            if not lines:
-                lines = "<tr><td colspan='4' class='small'>Sem itens</td></tr>"
-            return f"<details><summary>{cat} <span class='tag' style='margin-left:10px;'>Total {brl(total)}</span></summary><table><thead><tr><th>Data</th><th>Descrição</th><th class='right'>Valor</th><th>Tipo</th></tr></thead><tbody>{lines}</tbody></table></details>"
-
-        def rows_from(items):
-            out = ""
-            for cat, val in items:
-                out += f"<tr><td>{cat}</td><td class='right'>{brl(val)}</td></tr>"
-            if not out:
-                out = "<tr><td colspan='2' class='small'>Sem dados</td></tr>"
-            return out
-
-        individual_block = f"""
-          <div class="card">
-            <h3>Resumo Individual ({profile})</h3>
-            <div class="kpi">
-              <div class="box">
-                <div class="label">Renda total</div>
-                <div class="value">{brl(ind["income"]["total"])}</div>
-              </div>
-              <div class="box">
-                <div class="label">Minha parte da casa</div>
-                <div class="value">{brl(ind["house_total"])}</div>
-              </div>
-              <div class="box">
-                <div class="label">Meu pessoal</div>
-                <div class="value">{brl(ind["my_personal_total"])}</div>
-              </div>
-              <div class="box">
-                <div class="label">A pagar para o outro</div>
-                <div class="value">{brl(ind["payable_total"])}</div>
-              </div>
-            </div>
-
-            <div class="kpi" style="margin-top:12px;">
-              <div class="box">
-                <div class="label">Gastos efetivos</div>
-                <div class="value">{brl(ind["expenses_effective"])}</div>
-                <div class="small">Casa + Pessoal + A pagar</div>
-              </div>
-              <div class="box">
-                <div class="label">Saldo pós pagamentos</div>
-                <div class="value">{brl(ind["saldo_pos_pagamentos"])}</div>
-              </div>
-              <div class="box">
-                <div class="label">Investir</div>
-                <div class="value">{brl(ind["invested"])}</div>
-                <div class="small">{pct(ind["invested_pct"])} da renda</div>
-              </div>
-              <div class="box">
-                <div class="label">Saldo em conta</div>
-                <div class="value">{brl(ind["saldo_em_conta"])}</div>
-              </div>
-            </div>
-          </div>
+    DASHBOARD_CSS = """
+    <style>
+      .darkBoard{background: radial-gradient(1200px 700px at 15% 0%, #1e3a8a55 0%, transparent 50%), linear-gradient(180deg, #0b1226 0%, #121a33 100%); color:#e5e7eb; border-radius:20px; border:1px solid rgba(148,163,184,.25); padding:16px;}
+      .darkBoard h2,.darkBoard h3{color:#f8fafc}
+      .darkGrid{display:grid; grid-template-columns:repeat(4,1fr); gap:12px;}
+      .darkKpi{padding:14px; border-radius:16px; border:1px solid rgba(148,163,184,.2); background:rgba(15,23,42,.55)}
+      .darkKpi .label{font-size:12px; color:#93c5fd}
+      .darkKpi .value{font-size:28px; font-weight:900; color:#fff}
+      .panel{padding:14px; border-radius:16px; border:1px solid rgba(148,163,184,.2); background:rgba(15,23,42,.45)}
+      .panelGrid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;}
+      .catPick{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 0;}
+      .catPick label{font-weight:600; font-size:12px; color:#cbd5e1; display:inline-flex; align-items:center; gap:6px; margin:0}
+      @media (max-width: 900px){.darkGrid{grid-template-columns:1fr;} .panelGrid{grid-template-columns:1fr;}}
+    </style>
+    """
 
     if mode == "investimentos":
         receitas_label = "MoM%"
@@ -1773,16 +1386,7 @@ def overview():
         despesas_label = "Despesas"
         despesas_value = brl(despesas)
 
-          <div class="card">
-            <h3>Meu pessoal por categoria</h3>
-            <table>
-              <thead><tr><th>Categoria</th><th class="right">Valor</th></tr></thead>
-              <tbody>{rows_from(ind["cats_personal"])}</tbody>
-            </table>
-            <h3 style="margin-top:14px;">Detalhes do pessoal (clique para abrir)</h3>
-            {''.join([cat_detail(cat, val, personal_detail_map.get(cat, [])) for cat, val in ind["cats_personal"]]) or "<p class='small'>Sem detalhes.</p>"}
-          </div>
-        """
+    overview_warning = f"<div class='errorBox' style='margin-top:10px;'><b>{overview_error}</b></div>" if overview_error else ""
 
     html = f"""
     <!doctype html>
@@ -1800,17 +1404,107 @@ def overview():
           <div class="card darkBoard">
             <h2>Dashboard</h2>
             <p style="color:#94a3b8;">Visão geral Casa, Individual e Investimentos no mesmo Overview.</p>
+            {overview_warning}
             {month_selector_block(selected_year, selected_month, url_for('overview'))}
             {toggle}
+
+            <div class="darkGrid" style="margin-top:12px;">
+              <div class="darkKpi"><div class="label">Saldo atual ({mode.title()})</div><div class="value">{brl(saldo) if mode!='investimentos' else brl(inv_hist['cur_total'])}</div></div>
+              <div class="darkKpi"><div class="label">{receitas_label}</div><div class="value">{receitas_value}</div></div>
+              <div class="darkKpi"><div class="label">{despesas_label}</div><div class="value">{despesas_value}</div></div>
+              <div class="darkKpi"><div class="label">Patrimônio/Investimentos</div><div class="value">{brl(invest_total)}</div></div>
+            </div>
+
+            <div class="panelGrid">
+              <div class="panel">
+                <h3>{'Investimentos por categoria (pizza)' if mode=='investimentos' else 'Despesas por Categoria'}</h3>
+                <canvas id="pieChart" height="220"></canvas>
+              </div>
+              <div class="panel">
+                <h3>{'Investimentos mês a mês (barras empilhadas)' if mode=='investimentos' else 'Evolução mensal por categoria'}</h3>
+                <div class="catPick" id="catPick"></div>
+                <canvas id="lineChart" height="220"></canvas>
+              </div>
+            </div>
           </div>
 
-          {casa_block}
-          {individual_block}
+          {detail_block}
         </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+          const payload = {chart_data};
+          const pieCtx = document.getElementById('pieChart');
+          if (pieCtx) {{
+            new Chart(pieCtx, {{
+              type: 'doughnut',
+              data: {{ labels: payload.pie_labels, datasets: [{{ data: payload.pie_values, backgroundColor: payload.pie_colors }}] }},
+              options: {{ plugins: {{ legend: {{ position: 'bottom', labels: {{ color: '#e5e7eb' }} }} }} }}
+            }});
+          }}
+
+          const allCats = Object.keys(payload.line_map || {{}});
+          const pick = document.getElementById('catPick');
+          const colors = ['#5ea1ff','#ef4444','#f59e0b','#34d399','#a78bfa','#fb7185','#22d3ee','#9ca3af','#10b981','#f97316'];
+          let selected = allCats.slice(0, Math.min(3, allCats.length));
+
+          function buildSelectors() {{
+            if (!pick) return;
+            pick.innerHTML = '';
+            allCats.forEach((cat, idx) => {{
+              const id = 'cat_' + idx;
+              const checked = selected.includes(cat) ? 'checked' : '';
+              pick.insertAdjacentHTML('beforeend', `<label><input type="checkbox" id="${{id}}" data-cat="${{cat}}" ${{checked}}> ${{cat}}</label>`);
+            }});
+            pick.querySelectorAll('input[type="checkbox"]').forEach(el => {{
+              el.addEventListener('change', () => {{
+                const c = el.dataset.cat;
+                if (el.checked) {{ if (!selected.includes(c)) selected.push(c); }}
+                else {{ selected = selected.filter(x => x !== c); }}
+                drawMain();
+              }});
+            }});
+          }}
+
+          let mainChart = null;
+          function drawMain() {{
+            const ctx = document.getElementById('lineChart');
+            if (!ctx) return;
+            if (mainChart) mainChart.destroy();
+
+            const datasets = selected.map((cat, idx) => ({{
+              label: cat,
+              data: payload.line_map[cat] || [],
+              borderColor: colors[idx % colors.length],
+              backgroundColor: colors[idx % colors.length] + '55',
+              tension: 0.25,
+              fill: false,
+              stack: 'inv'
+            }}));
+
+            const isInv = payload.mode === 'investimentos';
+            mainChart = new Chart(ctx, {{
+              type: isInv ? 'bar' : 'line',
+              data: {{ labels: payload.line_labels, datasets }},
+              options: {{
+                responsive: true,
+                scales: {{
+                  x: {{ ticks: {{ color: '#cbd5e1' }}, stacked: isInv }},
+                  y: {{ ticks: {{ color: '#cbd5e1' }}, stacked: isInv }}
+                }},
+                plugins: {{ legend: {{ labels: {{ color: '#e5e7eb' }} }} }}
+              }}
+            }});
+          }}
+
+          buildSelectors();
+          drawMain();
+        </script>
       </body>
     </html>
     """
     return html
+
 
 @app.route("/entradas")
 def entradas():
@@ -1997,6 +1691,7 @@ def transacoes():
                         errors.append(f"Falha ao ler arquivo: {e}")
 
             elif action == "excel_confirm":
+                open_panel = "upload"
                 preview_batch_id = _normalize_str(request.form.get("preview_batch_id"))
                 ok, msg = finalize_import(preview_batch_id, profile)
                 info = msg
@@ -2013,6 +1708,7 @@ def transacoes():
         val = signed_value(r["tipo"], r["valor"])
         rows_html += f"""
         <tr>
+            <td class="small">{'Receita' if _normalize_str(r['tipo'])=='Entrada' else 'Despesa'}</td>
             <td class="small">{_normalize_str(r["dt_text"])}</td>
             <td class="small">{_normalize_str(r["uploaded_by"])}</td>
             <td class="small">{_normalize_str(r["dono"])}</td>
@@ -2020,7 +1716,7 @@ def transacoes():
             <td>{_normalize_str(r["estabelecimento"])}</td>
             <td class="right">{brl(val)}</td>
             <td class="small">{_normalize_str(r["rateio"])}</td>
-            <td class="small">{_normalize_str(r["tipo"])}</td>
+            <td class="small">{_normalize_str(r["observacao"])}</td>
             <td>
               <a class="btn btnGhost" href="{url_for('transacoes')}?Ano={selected_year}&Mes={selected_month}&edit_id={r['id']}">Editar</a>
               <form method="post" style="display:inline-block; margin-left:6px;" onsubmit="return confirm('Excluir este lançamento?');">
@@ -2035,7 +1731,7 @@ def transacoes():
         """
 
     if not rows_html:
-        rows_html = "<tr><td colspan='9' class='small'>Sem transações importadas</td></tr>"
+        rows_html = "<tr><td colspan='10' class='small'>Sem transações importadas</td></tr>"
 
     cat_datalist = "".join([f"<option value='{c}'></option>" for c in SUGGESTED_CATEGORIES])
     rateio_opts = "".join([f"<option value='{k}'>{k}</option>" for k in ["60/40", "50/50", "100%_Meu", "100%_Outro"]])
@@ -2044,6 +1740,8 @@ def transacoes():
         f"<option value='Saida'>Despesa</option>",
         f"<option value='Entrada'>Receita</option>",
     ])
+    year_options, month_options = year_month_select_html(selected_year, selected_month)
+    selected_month_name = month_name_pt(selected_month)
 
     err_block = f"<div class='card'><div class='errorBox'>{'<br/>'.join(errors)}</div></div>" if errors else ""
     info_block = f"<div class='card'><div class='{'okBox' if info_ok else 'errorBox'}'><b>{info}</b></div></div>" if info else ""
@@ -2123,57 +1821,84 @@ def transacoes():
             <div class='row space'>
               <div>
                 <h2>Transações</h2>
-                <p>Entradas e saídas em um único lugar (Receita/Despesa).</p>
+                <p>Controle do mês e ações rápidas para input manual ou Excel.</p>
               </div>
-              <div class='row'>{lock_banner}{lock_controls}</div>
+              <div>
+                <form method='get' action='{url_for('transacoes')}' id='monthFormTx' class='controlBar' style='justify-content:flex-end;'>
+                  <select class='selectCompact' name='Mes' onchange="document.getElementById('monthFormTx').submit()">{month_options}</select>
+                  <select class='selectCompact' name='Ano' onchange="document.getElementById('monthFormTx').submit()">{year_options}</select>
+                </form>
+                <div class='row' style='justify-content:flex-end; margin-top:8px;'>
+                  {lock_controls}
+                </div>
+              </div>
             </div>
-            {month_selector_block(selected_year, selected_month, url_for('transacoes'))}
+            <div class='row' style='margin-top:8px;'>{lock_banner}<span class='pill'>Referência: <b>{selected_month_name}/{selected_year}</b></span></div>
           </div>
 
           {err_block}
           {info_block}
 
           <div class='card'>
-            <h3>Upload do mês (Excel)</h3>
-            <form id='excelForm' method='post' enctype='multipart/form-data' style='margin-top:12px;'>
-              <input type='hidden' name='Ano' value='{selected_year}'>
-              <input type='hidden' name='Mes' value='{selected_month}'>
-              <input type='hidden' name='action' value='excel_preview'>
-              <label>Arquivo Excel</label>
-              <input id='fileInput' type='file' name='file' accept='.xlsx,.xls' {'disabled' if lock else ''}/>
-            </form>
+            <h3>Inputs</h3>
+            <p class='small'>Clique no botão para abrir o input desejado.</p>
+
+            <div class='row' style='margin:10px 0 12px;'>
+              <button id='btnReceitaTop' class='btn btnIncome' type='button' {'disabled' if lock else ''}>+ RECEITA</button>
+              <button id='btnDespesaTop' class='btn btnExpense' type='button' {'disabled' if lock else ''}>- DESPESA</button>
+              <button id='btnUploadTop' class='btn btnGhost' type='button' {'disabled' if lock else ''}>UPLOAD</button>
+              <a class='btn btnGhost' href='{url_for('download_template')}'>DOWNLOAD TEMPLATE</a>
+            </div>
+
+            <div id='manualPanel' style='display:none;'>
+              <h4 style='margin:0 0 8px;'>Input manual</h4>
+              <form method='post'>
+                  <input type='hidden' name='Ano' value='{selected_year}'>
+                  <input type='hidden' name='Mes' value='{selected_month}'>
+                  <input type='hidden' name='action' value='manual'>
+                  <input id='tipoManual' type='hidden' name='Tipo' value='Saida'>
+
+                  <div class='grid2'>
+                    <div><label>Descrição</label><input type='text' name='Estabelecimento' {'disabled' if lock else ''}/></div>
+                    <div><label>Categoria</label><input list='cats' type='text' name='Categoria' {'disabled' if lock else ''}/><datalist id='cats'>{cat_datalist}</datalist></div>
+                  </div>
+
+                  <div class='grid2'>
+                    <div><label>Valor</label><input type='text' name='Valor' placeholder='ex: 100+130+250' {'disabled' if lock else ''}/></div>
+                    <div><label>Responsabilidade</label><select name='Dono' {'disabled' if lock else ''}>{resp_opts}</select></div>
+                  </div>
+
+                  <div class='grid2'>
+                    <div><label>Rateio</label><select name='Rateio' {'disabled' if lock else ''}>{rateio_opts}</select></div>
+                    <div><label>Observação</label><input type='text' name='Observacao' {'disabled' if lock else ''}/></div>
+                  </div>
+
+                  <div class='grid3'>
+                    <div><label>Repetir por quantos meses</label><input type='number' name='RepetirMeses' value='1' min='1' max='36' {'disabled' if lock else ''}/></div>
+                    <div><label>Parcela</label><input type='text' name='Parcela' {'disabled' if lock else ''}/></div>
+                    <div><label>Data (opcional)</label><input type='date' name='Data' {'disabled' if lock else ''}/></div>
+                  </div>
+
+                  <div class='row' style='margin-top:12px;'><button class='btn btnPrimary' type='submit' {'disabled' if lock else ''}>Salvar transação</button></div>
+              </form>
+            </div>
+
+            <div id='uploadPanel' style='display:none; margin-top:8px;'>
+              <h4 style='margin:0 0 8px;'>Upload por Excel</h4>
+              <form id='excelForm' method='post' enctype='multipart/form-data'>
+                  <input type='hidden' name='Ano' value='{selected_year}'>
+                  <input type='hidden' name='Mes' value='{selected_month}'>
+                  <input type='hidden' name='action' value='excel_preview'>
+                  <input id='fileInput' type='file' name='file' accept='.xlsx,.xls' style='display:none;' {'disabled' if lock else ''}/>
+                  <div id='dropZone' class='card' style='margin-top:0; border-style:dashed; text-align:center; padding:28px; cursor:pointer;'>
+                    <b>Arraste o Excel aqui</b><br/>
+                    <span class='small'>ou clique para selecionar o arquivo</span>
+                  </div>
+              </form>
+            </div>
           </div>
 
           {preview_table}
-
-          <div class='card'>
-            <h3>Adicionar manual</h3>
-            <p class='small'>No campo valor você pode usar calculadora simples, ex.: 100+130+250.</p>
-            <form method='post'>
-              <input type='hidden' name='Ano' value='{selected_year}'>
-              <input type='hidden' name='Mes' value='{selected_month}'>
-              <input type='hidden' name='action' value='manual'>
-              <div class='grid2'>
-                <div><label>Data</label><input type='date' name='Data' {'disabled' if lock else ''}/></div>
-                <div><label>Valor</label><input type='text' name='Valor' placeholder='ex: 100+130+250' {'disabled' if lock else ''}/></div>
-              </div>
-              <div class='grid2'>
-                <div><label>Descrição</label><input type='text' name='Estabelecimento' {'disabled' if lock else ''}/></div>
-                <div><label>Categoria</label><input list='cats' type='text' name='Categoria' {'disabled' if lock else ''}/><datalist id='cats'>{cat_datalist}</datalist></div>
-              </div>
-              <div class='grid3'>
-                <div><label>Tipo</label><select name='Tipo' {'disabled' if lock else ''}>{tipo_opts}</select></div>
-                <div><label>Responsabilidade</label><select name='Dono' {'disabled' if lock else ''}>{resp_opts}</select></div>
-                <div><label>Rateio</label><select name='Rateio' {'disabled' if lock else ''}>{rateio_opts}</select></div>
-              </div>
-              <div class='grid3'>
-                <div><label>Repetir por quantos meses</label><input type='number' name='RepetirMeses' value='1' min='1' max='36' {'disabled' if lock else ''}/></div>
-                <div><label>Parcela</label><input type='text' name='Parcela' {'disabled' if lock else ''}/></div>
-                <div><label>Observação</label><input type='text' name='Observacao' {'disabled' if lock else ''}/></div>
-              </div>
-              <div class='row' style='margin-top:12px;'><button class='btn btnPrimary' type='submit' {'disabled' if lock else ''}>Salvar transação</button></div>
-            </form>
-          </div>
 
           {edit_form}
 
@@ -2181,7 +1906,7 @@ def transacoes():
             <h3>Lista do mês</h3>
             <table>
               <thead>
-                <tr><th>Data</th><th>Pago por</th><th>Resp.</th><th>Categoria</th><th>Descrição</th><th class='right'>Valor</th><th>Rateio</th><th>Tipo</th><th>Ações</th></tr>
+                <tr><th>Tipo</th><th>Data</th><th>Pago por</th><th>Responsabilidade</th><th>Categoria</th><th>Descrição</th><th class='right'>Valor</th><th>Rateio</th><th>Observações</th><th>Ações</th></tr>
               </thead>
               <tbody>{rows_html}</tbody>
             </table>
@@ -2190,6 +1915,15 @@ def transacoes():
         <script>
           const fileInput = document.getElementById('fileInput');
           const form = document.getElementById('excelForm');
+          const dropZone = document.getElementById('dropZone');
+          const manualPanel = document.getElementById('manualPanel');
+          const uploadPanel = document.getElementById('uploadPanel');
+
+          function openPanel(panel) {{
+            if (manualPanel) manualPanel.style.display = panel === 'manual' ? 'block' : 'none';
+            if (uploadPanel) uploadPanel.style.display = panel === 'upload' ? 'block' : 'none';
+          }}
+
           if (fileInput && form) {{
             fileInput.addEventListener('change', () => {{
               if (fileInput.files && fileInput.files.length > 0) {{
@@ -2198,22 +1932,41 @@ def transacoes():
             }});
           }}
 
+          if (dropZone && fileInput) {{
+            dropZone.addEventListener('click', () => fileInput.click());
+            dropZone.addEventListener('dragover', (e) => {{ e.preventDefault(); dropZone.style.borderColor = '#60a5fa'; }});
+            dropZone.addEventListener('dragleave', () => {{ dropZone.style.borderColor = ''; }});
+            dropZone.addEventListener('drop', (e) => {{
+              e.preventDefault();
+              dropZone.style.borderColor = '';
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {{
+                fileInput.files = e.dataTransfer.files;
+                form.submit();
+              }}
+            }});
+          }}
+
           const tipoManual = document.getElementById('tipoManual');
-          const btnDespesa = document.getElementById('btnDespesa');
-          const btnReceita = document.getElementById('btnReceita');
+          const btnDespesa = document.getElementById('btnDespesaTop');
+          const btnReceita = document.getElementById('btnReceitaTop');
+          const btnUpload = document.getElementById('btnUploadTop');
           function setTipoManual(tipo) {{
             if (!tipoManual || !btnDespesa || !btnReceita) return;
             tipoManual.value = tipo;
             if (tipo === 'Entrada') {{
-              btnReceita.classList.add('btnPrimary');
-              btnDespesa.classList.remove('btnPrimary');
+              btnReceita.classList.add('is-active');
+              btnDespesa.classList.remove('is-active');
             }} else {{
-              btnDespesa.classList.add('btnPrimary');
-              btnReceita.classList.remove('btnPrimary');
+              btnDespesa.classList.add('is-active');
+              btnReceita.classList.remove('is-active');
             }}
           }}
-          if (btnDespesa) btnDespesa.addEventListener('click', () => setTipoManual('Saida'));
-          if (btnReceita) btnReceita.addEventListener('click', () => setTipoManual('Entrada'));
+          if (btnDespesa) btnDespesa.addEventListener('click', () => {{ setTipoManual('Saida'); openPanel('manual'); }});
+          if (btnReceita) btnReceita.addEventListener('click', () => {{ setTipoManual('Entrada'); openPanel('manual'); }});
+          if (btnUpload) btnUpload.addEventListener('click', () => openPanel('upload'));
+
+          const startPanel = '{open_panel if open_panel in ("manual", "upload") else ("upload" if preview_rows else "") }';
+          if (startPanel) openPanel(startPanel);
           setTipoManual('Saida');
         </script>
       </body>
