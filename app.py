@@ -410,11 +410,16 @@ def topbar_html(profile: str, active: str = "overview"):
         klass = "btn btnPrimary" if key == active else "btn btnGhost"
         return f"<a class='{klass}' href='{endpoint}'>{label}</a>"
 
+    now_y, now_m = current_year_month()
+    selected_year = request.values.get("Ano") or str(now_y)
+    selected_month = request.values.get("Mes") or f"{now_m:02d}"
+
     nav = f"""
     <div class="nav">
       {nav_btn("Overview", url_for("overview"), "overview")}
       {nav_btn("Transações", url_for("transacoes"), "transacoes")}
       {nav_btn("Perfil", url_for("perfil"), "perfil")}
+      <span class="pill">Competência: <b>{selected_year}/{selected_month}</b></span>
     </div>
     """
 
@@ -1821,6 +1826,24 @@ def transacoes():
               }}
             }});
           }}
+
+          const tipoManual = document.getElementById('tipoManual');
+          const btnDespesa = document.getElementById('btnDespesa');
+          const btnReceita = document.getElementById('btnReceita');
+          function setTipoManual(tipo) {{
+            if (!tipoManual || !btnDespesa || !btnReceita) return;
+            tipoManual.value = tipo;
+            if (tipo === 'Entrada') {{
+              btnReceita.classList.add('btnPrimary');
+              btnDespesa.classList.remove('btnPrimary');
+            }} else {{
+              btnDespesa.classList.add('btnPrimary');
+              btnReceita.classList.remove('btnPrimary');
+            }}
+          }}
+          if (btnDespesa) btnDespesa.addEventListener('click', () => setTipoManual('Saida'));
+          if (btnReceita) btnReceita.addEventListener('click', () => setTipoManual('Entrada'));
+          setTipoManual('Saida');
         </script>
       </body>
     </html>
