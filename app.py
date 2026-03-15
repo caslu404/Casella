@@ -9,21 +9,20 @@ import json
 import pandas as pd
 
 app = Flask(__name__)
-app.secret_key = "dev-secret-change-later"
+app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-later")
 
-DB_PATH = os.getenv("DB_PATH", "data.db")
+# Render persistent disk
+DISK_PATH = os.getenv("RENDER_DISK_PATH", "/var/data")
+DB_PATH = os.getenv("DB_PATH", os.path.join(DISK_PATH, "casella.db"))
 
-# Split padrão (Rafa ganha mais)
+# Split padrão
 LUCAS_SHARE = 0.40
 RAFA_SHARE = 0.60
 
 ALLOWED_PROFILES = {"Lucas", "Rafa"}
 ALLOWED_TIPO = {"Saida", "Entrada"}
-
-# "Responsabilidade" (no seu print ainda vem como "Dono")
 ALLOWED_RESP = {"Casa", "Lucas", "Rafa"}
 
-# Aceita variações no input, mas o banco guarda sempre canônico com underscore
 RATEIO_CANON = {
     "60/40": "60_40",
     "60_40": "60_40",
@@ -35,7 +34,6 @@ RATEIO_CANON = {
     "100_outro": "100_outro",
 }
 
-# Sugestões (não trava)
 SUGGESTED_CATEGORIES = [
     "Água",
     "Aluguel",
@@ -88,22 +86,6 @@ SUGGESTED_CATEGORIES = [
     "Viagens",
 ]
 
-# Fixos (aparecem no topo apenas quando a lista do mês está aberta)
-# Obs: responsabilidade Casa, rateio 60/40, e quem pagou de fato é "uploaded_by" (perfil que importou)
-FIXOS = [
-    {"key": "aluguel", "label": "Aluguel", "valor": 2541.00, "payer": "Rafa", "resp": "Casa", "rateio": "60_40", "categoria": "Contas da Casa"},
-    {"key": "condominio", "label": "Condomínio", "valor": 1374.42, "payer": "Lucas", "resp": "Casa", "rateio": "60_40", "categoria": "Contas da Casa"},
-    {"key": "internet", "label": "Internet", "valor": 115.00, "payer": "Lucas", "resp": "Casa", "rateio": "60_40", "categoria": "Contas da Casa"},
-    {"key": "estacionamento", "label": "Estacionamento Amazon", "valor": 75.00, "payer": "Rafa", "resp": "Casa", "rateio": "60_40", "categoria": "Transporte"},
-]
-
-# Variáveis "sempre aparecem", mas ficam como pendentes até você preencher manualmente
-PENDENTES = [
-    {"key": "luz", "label": "Luz", "categoria": "Contas da Casa"},
-    {"key": "gas", "label": "Gás", "categoria": "Contas da Casa"},
-    {"key": "diarista", "label": "Diarista", "categoria": "Contas da Casa"},
-]
-
 BASE_CSS = """
 <style>
   :root{
@@ -143,7 +125,7 @@ BASE_CSS = """
     border-bottom: 1px solid var(--border);
   }
 
-  .wrap{max-width:1100px; margin:0 auto; padding: 16px;}
+  .wrap{max-width:1100px; margin:0 auto; padding:16px;}
   .row{display:flex; gap:12px; align-items:center; flex-wrap:wrap;}
   .space{justify-content:space-between;}
   .pill{
@@ -169,120 +151,105 @@ BASE_CSS = """
   }
   .dot.lucas{background: linear-gradient(135deg, var(--lucas1), var(--lucas2));}
   .dot.rafa{background: linear-gradient(135deg, var(--rafa1), var(--rafa2));}
-
-  .nav{
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
-  }
+  .nav{display:flex; gap:10px; flex-wrap:wrap;}
 
   .btn{
     appearance:none;
-    border: 1px solid var(--border);
+    border:1px solid var(--border);
     background: rgba(15,23,42,.66);
     color: var(--text);
-    padding: 10px 14px;
-    border-radius: 14px;
-    font-weight: 800;
-    font-size: 15px;
+    padding:10px 14px;
+    border-radius:14px;
+    font-weight:800;
+    font-size:15px;
     cursor:pointer;
     text-decoration:none;
     display:inline-flex;
     align-items:center;
     justify-content:center;
     gap:8px;
-    transition: transform .06s ease, box-shadow .12s ease, border-color .12s ease;
   }
-  .btn:hover{border-color: rgba(96,165,250,.52); box-shadow: 0 10px 26px rgba(59,130,246,.25);}
-  .btn:active{transform: translateY(1px);}
-
   .btnPrimary{
     border:0;
     color:white;
-    box-shadow: 0 16px 30px rgba(37,99,235,.34);
     background: linear-gradient(135deg, var(--neutral1), var(--neutral2));
   }
-  .btnLucas{ background: linear-gradient(135deg, var(--lucas1), var(--lucas2)); box-shadow: 0 16px 30px rgba(37,99,235,.3); }
-  .btnRafa{ background: linear-gradient(135deg, var(--rafa1), var(--rafa2)); box-shadow: 0 16px 30px rgba(22,163,74,.28); }
-
-  .btnGhost{
-    background: rgba(15,23,42,.46);
-  }
-
+  .btnLucas{ background: linear-gradient(135deg, var(--lucas1), var(--lucas2)); }
+  .btnRafa{ background: linear-gradient(135deg, var(--rafa1), var(--rafa2)); }
+  .btnGhost{ background: rgba(15,23,42,.46); }
   .btnDanger{
     border:0;
     color:white;
     background: linear-gradient(135deg, #b91c1c, #fb7185);
   }
+  .btnIncome{border:0; color:white; background: linear-gradient(135deg,#10b981,#34d399);}
+  .btnExpense{border:0; color:white; background: linear-gradient(135deg,#ef4444,#f43f5e);}
 
   .card{
     background: rgba(15,23,42,.5);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px;
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:16px;
     box-shadow: var(--shadow);
-    margin-top: 14px;
+    margin-top:14px;
   }
 
-  h1{margin:0 0 10px; font-size:30px; line-height:1.15;}
-  h2{margin:0 0 10px; font-size:26px; line-height:1.2;}
-  h3{margin:0 0 10px; font-size:22px; line-height:1.2;}
-  h4{margin:0 0 8px; font-size:18px; line-height:1.25;}
+  h1{margin:0 0 10px; font-size:30px;}
+  h2{margin:0 0 10px; font-size:26px;}
+  h3{margin:0 0 10px; font-size:22px;}
+  h4{margin:0 0 8px; font-size:18px;}
   p{margin:0 0 10px; color: var(--muted);}
 
-  label{font-weight:800; display:block; margin: 10px 0 6px; font-size:14px;}
+  label{font-weight:800; display:block; margin:10px 0 6px; font-size:14px;}
   input[type="text"], input[type="number"], input[type="file"], input[type="date"], select, textarea{
     width:100%;
-    padding: 10px 12px;
-    border-radius: 14px;
+    padding:10px 12px;
+    border-radius:14px;
     border:1px solid var(--border);
     background: rgba(2,6,23,.46);
     color: var(--text);
     font-size:14px;
     outline:none;
   }
-  textarea{min-height:90px; resize:vertical;}
 
   .grid2{display:grid; grid-template-columns: 1fr 1fr; gap:12px;}
   .grid3{display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px;}
   .grid4{display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:12px;}
 
-  .kpi{display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:12px;}
+  .kpi{display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px;}
   .kpi .box{
     border:1px solid var(--border);
-    border-radius: 16px;
+    border-radius:16px;
     background: rgba(15,23,42,.42);
-    padding: 12px;
+    padding:12px;
   }
   .kpi .label{font-size:12px; color: var(--muted); margin-bottom:6px;}
   .kpi .value{font-size:20px; font-weight:900;}
 
   .right{text-align:right}
-  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
   .small{font-size:13px; color: var(--muted);}
-
   .okBox{
     border:1px solid rgba(22,163,74,.25);
     background: rgba(22,163,74,.16);
-    padding: 12px;
-    border-radius: 14px;
+    padding:12px;
+    border-radius:14px;
   }
   .errorBox{
     border:1px solid rgba(185,28,28,.25);
     background: rgba(185,28,28,.18);
-    padding: 12px;
-    border-radius: 14px;
+    padding:12px;
+    border-radius:14px;
   }
 
-  table{width:100%; border-collapse: collapse; margin-top:10px;}
-  th,td{border-bottom:1px solid rgba(148,163,184,.16); padding: 10px 8px; vertical-align: top; font-size:14px;}
-  th{color:#cbd5e1; background: rgba(15,23,42,.88); position: sticky; top: 58px; z-index:2;}
+  table{width:100%; border-collapse:collapse; margin-top:10px;}
+  th,td{border-bottom:1px solid rgba(148,163,184,.16); padding:10px 8px; vertical-align: top; font-size:14px;}
+  th{color:#cbd5e1; background: rgba(15,23,42,.88); position: sticky; top:58px; z-index:2;}
   details{
-    border: 1px solid rgba(15,23,42,.06);
+    border:1px solid rgba(15,23,42,.06);
     background: rgba(15,23,42,.42);
-    border-radius: 14px;
-    padding: 10px 12px;
-    margin-top: 10px;
+    border-radius:14px;
+    padding:10px 12px;
+    margin-top:10px;
   }
   summary{cursor:pointer; font-weight:900;}
   .tag{
@@ -292,7 +259,7 @@ BASE_CSS = """
     border:1px solid rgba(15,23,42,.08);
     background: rgba(30,41,59,.62);
     font-size:12px;
-    color: #cbd5e1;
+    color:#cbd5e1;
   }
 
   .controlBar{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
@@ -302,13 +269,10 @@ BASE_CSS = """
     border-radius:12px;
     background: rgba(2,6,23,.56);
   }
-  .btnIncome{border:0; color:white; background: linear-gradient(135deg,#10b981,#34d399);}
-  .btnExpense{border:0; color:white; background: linear-gradient(135deg,#ef4444,#f43f5e);}
-  .is-active{box-shadow:0 0 0 2px rgba(255,255,255,.25) inset, 0 8px 20px rgba(59,130,246,.28);}
 
   @media (max-width: 900px){
-    .grid4,.grid3,.grid2,.kpi{grid-template-columns: 1fr;}
-    th{top: 118px;}
+    .grid4,.grid3,.grid2,.kpi{grid-template-columns:1fr;}
+    th{top:118px;}
   }
 </style>
 """
@@ -316,16 +280,10 @@ BASE_CSS = """
 def brl(x: float) -> str:
     try:
         x = float(x or 0)
-    except:
+    except Exception:
         x = 0.0
     s = f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"R$ {s}"
-
-def pct(x: float) -> str:
-    try:
-        return f"{x*100:.1f}%"
-    except:
-        return "0.0%"
 
 def _normalize_str(x) -> str:
     if x is None:
@@ -337,16 +295,7 @@ def current_year_month():
     return today.year, today.month
 
 def month_ref_from(year_str: str, month_str: str) -> str:
-    try:
-        y = int(str(year_str).strip())
-    except:
-        y = dt.date.today().year
-    try:
-        m = int(str(month_str).strip())
-    except:
-        m = dt.date.today().month
-    m = min(max(m, 1), 12)
-    return f"{y:04d}{m:02d}"
+    return f"{year_str}{month_str}"
 
 def get_db():
     db_dir = os.path.dirname(DB_PATH)
@@ -361,6 +310,12 @@ def _col_exists(conn, table: str, col: str) -> bool:
     cur.execute(f"PRAGMA table_info({table})")
     cols = [r[1] for r in cur.fetchall()]
     return col in cols
+
+def ensure_column(conn, table: str, col: str, ddl: str):
+    if not _col_exists(conn, table, col):
+        cur = conn.cursor()
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+        conn.commit()
 
 def init_db():
     conn = get_db()
@@ -377,7 +332,28 @@ def init_db():
       created_at TEXT NOT NULL
     )
     """)
-@@ -345,99 +397,117 @@ def init_db():
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      batch_id TEXT NOT NULL,
+      month_ref TEXT NOT NULL,
+      uploaded_by TEXT NOT NULL,
+      dt_text TEXT,
+      estabelecimento TEXT,
+      categoria TEXT,
+      valor REAL NOT NULL DEFAULT 0,
+      tipo TEXT NOT NULL,
+      dono TEXT NOT NULL,
+      rateio TEXT NOT NULL,
+      observacao TEXT,
+      parcela TEXT,
+      created_at TEXT NOT NULL
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS incomes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       month_ref TEXT NOT NULL,
       profile TEXT NOT NULL,
@@ -416,7 +392,6 @@ def init_db():
     )
     """)
 
-    # trava de mês por perfil (fechar mês)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS month_locks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -427,6 +402,10 @@ def init_db():
       UNIQUE(month_ref, profile)
     )
     """)
+
+    # migrações leves
+    ensure_column(conn, "imports", "file_hash", "file_hash TEXT")
+    ensure_column(conn, "imports", "source", "source TEXT DEFAULT 'excel'")
 
     conn.commit()
     conn.close()
@@ -442,7 +421,7 @@ def profile_dot(profile: str) -> str:
 
 def topbar_html(profile: str, active: str = "overview"):
     if not profile:
-        return f"""
+        return """
         <div class="topbar">
           <div class="wrap">
             <div class="row space">
@@ -493,32 +472,47 @@ def topbar_html(profile: str, active: str = "overview"):
 def compute_file_hash(raw_bytes: bytes) -> str:
     return hashlib.sha256(raw_bytes).hexdigest()
 
-# ------------ IMPORT FLEXÍVEL (suporta seu input do print) ------------
+def _canon_col(c: str) -> str:
+    s = _normalize_str(c).lower()
+    s = (
+        s.replace("ç", "c")
+         .replace("ã", "a")
+         .replace("á", "a")
+         .replace("à", "a")
+         .replace("â", "a")
+         .replace("é", "e")
+         .replace("ê", "e")
+         .replace("í", "i")
+         .replace("ó", "o")
+         .replace("ô", "o")
+         .replace("õ", "o")
+         .replace("ú", "u")
+    )
+    s = s.replace(" ", "_")
+    return s
 
-@@ -469,107 +539,159 @@ def _parse_money(v) -> float:
+def _parse_money(v) -> float:
     if v is None:
         return 0.0
     try:
         if pd.isna(v):
             return 0.0
-    except:
+    except Exception:
         pass
 
     s = str(v).strip()
     s = s.replace("R$", "").replace("\u00a0", " ").strip()
     s = s.replace(" ", "")
 
-    # Se tiver ambos, assume "." milhar e "," decimal
     if "," in s and "." in s:
         s = s.replace(".", "").replace(",", ".")
     else:
-        # se só vírgula, vira decimal
         if "," in s and "." not in s:
             s = s.replace(",", ".")
 
     try:
         return float(s)
-    except:
+    except Exception:
         return 0.0
 
 def parse_num_br(v) -> float:
@@ -529,14 +523,14 @@ def parse_num_br(v) -> float:
         elif "," in v and "." not in v:
             v = v.replace(",", ".")
         return float(v) if v else 0.0
-    except:
+    except Exception:
         return 0.0
 
 def parse_value_expression(v) -> float:
     s = _normalize_str(v)
     if not s:
         return 0.0
-    # Permite somas/subtrações simples: 100+130-20, com vírgula/ponto.
+
     safe = s.replace(" ", "")
     allowed = set("0123456789+-,.")
     if any(ch not in allowed for ch in safe):
@@ -556,18 +550,17 @@ def parse_value_expression(v) -> float:
                 sign = 1.0 if ch == "+" else -1.0
             else:
                 current += ch
-
         if current:
             total += sign * float(current)
         return total
-    except:
+    except Exception:
         return parse_num_br(s)
 
 def _canon_rateio(x: str) -> str:
     x = _normalize_str(x)
     if x in RATEIO_CANON:
         return RATEIO_CANON[x]
-    return x  # deixa passar para erro de validação, se for algo desconhecido
+    return x
 
 def _canon_tipo(x: str) -> str:
     t = _normalize_str(x).lower().replace(" ", "")
@@ -578,49 +571,40 @@ def _canon_tipo(x: str) -> str:
         return "Saida"
     return _normalize_str(x)
 
+def signed_value(tipo: str, valor: float) -> float:
+    v = abs(float(valor or 0))
+    return v if tipo == "Entrada" else -v
+
+def share_for(profile: str, rateio: str) -> float:
+    if rateio == "60_40":
+        return LUCAS_SHARE if profile == "Lucas" else RAFA_SHARE
+    if rateio == "50_50":
+        return 0.50
+    return 1.0
+
 def read_excel_from_bytes(raw: bytes) -> pd.DataFrame:
     buf = io.BytesIO(raw)
-
-    # por padrão pega a primeira aba
     df = pd.read_excel(buf, engine="openpyxl")
     df = df.copy()
-
-    # normaliza os headers se existirem
     df.columns = [_canon_col(c) for c in df.columns]
 
-    # MODO TEMPLATE (novo):
-    # Tipo, Data, Dono, Categoria, Descricao, Valor, Rateio, Observacao
-    # Regra por posição para evitar quebra por header inesperado.
     if len(df.columns) >= 8:
         df_short = df.iloc[:, :8].copy()
         df_short.columns = ["Tipo", "Data", "Dono", "Categoria", "Descricao", "Valor", "Rateio", "Observacao"]
 
-        # Data: sem validação de formato
         df_short["Data"] = df_short["Data"].apply(lambda v: "" if pd.isna(v) else str(v))
-
-        # Valor
         df_short["Valor"] = df_short["Valor"].apply(_parse_money)
-
-        # Tipo vem explícito no template
         df_short["Tipo"] = df_short["Tipo"].apply(_canon_tipo)
-
-        # Valor sempre positivo (Entrada/Saida é definido por Tipo)
         df_short["Valor"] = df_short["Valor"].apply(lambda x: abs(float(x or 0)))
-
-        # Estabelecimento é a descrição
         df_short["Estabelecimento"] = df_short["Descricao"].apply(_normalize_str)
-
-        # Parcela vazio no template base
         df_short["Parcela"] = ""
-
-        # strings
         df_short["Dono"] = df_short["Dono"].apply(_normalize_str)
         df_short["Categoria"] = df_short["Categoria"].apply(_normalize_str)
         df_short["Rateio"] = df_short["Rateio"].apply(_normalize_str)
 
         return df_short
 
-    raise ValueError("Arquivo inválido: precisa ter pelo menos 8 colunas (Tipo, Data, Dono, Categoria, Descrição, Valor, Rateio, Observação)")
+    raise ValueError("Arquivo inválido: precisa ter pelo menos 8 colunas")
 
 def validate_transactions(df: pd.DataFrame):
     errors = []
@@ -630,38 +614,152 @@ def validate_transactions(df: pd.DataFrame):
         line_number = idx + 2
 
         tipo = _canon_tipo(row.get("Tipo"))
-        resp = _normalize_str(row.get("Dono"))  # responsabilidade
+        resp = _normalize_str(row.get("Dono"))
         rateio_raw = _normalize_str(row.get("Rateio"))
         rateio = _canon_rateio(rateio_raw)
 
         valor = row.get("Valor")
         try:
             valor_f = float(valor)
-        except:
+        except Exception:
             valor_f = 0.0
 
         if valor_f <= 0:
             errors.append(f"Linha {line_number}: Valor inválido, precisa ser maior que 0")
-
         if tipo not in ALLOWED_TIPO:
             errors.append(f"Linha {line_number}: Tipo inválido, use Saida ou Entrada")
-
         if resp not in ALLOWED_RESP:
             errors.append(f"Linha {line_number}: Responsabilidade inválida, use Casa, Lucas ou Rafa")
-
         if rateio not in {"60_40", "50_50", "100_meu", "100_outro"}:
-            errors.append(f"Linha {line_number}: Rateio inválido (use 60/40, 50/50, 100%_Meu ou 100%_Outro)")
+            errors.append(f"Linha {line_number}: Rateio inválido")
 
-        # regras de coerência
         if resp == "Casa" and rateio not in {"60_40", "50_50"}:
-            errors.append(f"Linha {line_number}: Responsabilidade Casa só permite rateio 60/40 ou 50/50")
-@@ -674,50 +796,113 @@ def finalize_import(batch_id: str, profile: str) -> tuple[bool, str]:
+            errors.append(f"Linha {line_number}: Responsabilidade Casa só permite 60/40 ou 50/50")
+        if resp in {"Lucas", "Rafa"} and rateio in {"60_40", "50_50"}:
+            errors.append(f"Linha {line_number}: 60/40 ou 50/50 exige responsabilidade Casa")
+
+        normalized_rows.append({
+            "Data": _normalize_str(row.get("Data")),
+            "Estabelecimento": _normalize_str(row.get("Estabelecimento")),
+            "Categoria": _normalize_str(row.get("Categoria")),
+            "Valor": abs(valor_f),
+            "Tipo": tipo,
+            "Dono": resp,
+            "Rateio": rateio,
+            "Observacao": _normalize_str(row.get("Observacao")),
+            "Parcela": _normalize_str(row.get("Parcela")),
+        })
+
+    return errors, normalized_rows
+
+def is_duplicate_import(month_ref: str, profile: str, file_hash: str) -> bool:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+      SELECT 1
+      FROM imports
+      WHERE month_ref = ? AND uploaded_by = ? AND file_hash = ?
+      LIMIT 1
+    """, (month_ref, profile, file_hash))
+    row = cur.fetchone()
+    conn.close()
+    return row is not None
+
+def create_preview_batch(month_ref: str, profile: str, filename: str, rows: list, file_hash: str):
+    batch_id = str(uuid.uuid4())
+    now = dt.datetime.utcnow().isoformat(timespec="seconds")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+      INSERT INTO imports (batch_id, month_ref, uploaded_by, filename, row_count, status, created_at, file_hash, source)
+      VALUES (?, ?, ?, ?, ?, 'preview', ?, ?, 'excel')
+    """, (batch_id, month_ref, profile, filename, len(rows), now, file_hash))
+
+    for r in rows:
+        cur.execute("""
+          INSERT INTO transactions (
+            batch_id, month_ref, uploaded_by, dt_text, estabelecimento, categoria,
+            valor, tipo, dono, rateio, observacao, parcela, created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            batch_id, month_ref, profile,
+            r.get("Data", ""),
+            r.get("Estabelecimento", ""),
+            r.get("Categoria", ""),
+            float(r.get("Valor") or 0),
+            r.get("Tipo", ""),
+            r.get("Dono", ""),
+            r.get("Rateio", ""),
+            r.get("Observacao", ""),
+            r.get("Parcela", ""),
+            now,
+        ))
+
+    conn.commit()
+    conn.close()
+    return batch_id
+
+def create_manual_batch(month_ref: str, profile: str, row: dict):
+    batch_id = str(uuid.uuid4())
+    now = dt.datetime.utcnow().isoformat(timespec="seconds")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+      INSERT INTO imports (batch_id, month_ref, uploaded_by, filename, row_count, status, created_at, file_hash, source)
+      VALUES (?, ?, ?, ?, ?, 'imported', ?, ?, 'manual')
+    """, (batch_id, month_ref, profile, "manual", 1, now, None))
+
+    cur.execute("""
+      INSERT INTO transactions (
+        batch_id, month_ref, uploaded_by, dt_text, estabelecimento, categoria,
+        valor, tipo, dono, rateio, observacao, parcela, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        batch_id, month_ref, profile,
+        row.get("Data", ""),
+        row.get("Estabelecimento", ""),
+        row.get("Categoria", ""),
+        float(row.get("Valor") or 0),
+        row.get("Tipo", ""),
+        row.get("Dono", ""),
+        row.get("Rateio", ""),
+        row.get("Observacao", ""),
+        row.get("Parcela", ""),
+        now,
+    ))
+
+    conn.commit()
+    conn.close()
+    return batch_id
+
+def finalize_import(batch_id: str, profile: str):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT uploaded_by, status FROM imports WHERE batch_id = ?", (batch_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return False, "Preview não encontrado"
+    if row["uploaded_by"] != profile:
+        conn.close()
+        return False, "Você só pode confirmar imports do seu perfil"
+    if row["status"] != "preview":
+        conn.close()
+        return False, "Esse batch não está em preview"
+
     cur.execute("UPDATE imports SET status = 'imported' WHERE batch_id = ?", (batch_id,))
     conn.commit()
     conn.close()
     return True, "Importação concluída"
 
-def delete_batch(batch_id: str, profile: str) -> tuple[bool, str]:
+def delete_batch(batch_id: str, profile: str):
     conn = get_db()
     cur = conn.cursor()
 
@@ -695,7 +793,7 @@ def fetch_transaction_by_id(tx_id: int):
     conn.close()
     return row
 
-def delete_transaction(tx_id: int, profile: str) -> tuple[bool, str]:
+def delete_transaction(tx_id: int, profile: str):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT uploaded_by FROM transactions WHERE id = ?", (tx_id,))
@@ -712,70 +810,7 @@ def delete_transaction(tx_id: int, profile: str) -> tuple[bool, str]:
     conn.close()
     return True, "Lançamento excluído"
 
-def update_transaction(tx_id: int, profile: str, row: dict) -> tuple[bool, str]:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT uploaded_by FROM transactions WHERE id = ?", (tx_id,))
-    found = cur.fetchone()
-    if not found:
-        conn.close()
-        return False, "Lançamento não encontrado"
-    if found["uploaded_by"] != profile:
-        conn.close()
-        return False, "Você só pode editar lançamentos do seu perfil"
-
-    cur.execute("""
-      UPDATE transactions
-      SET dt_text = ?, estabelecimento = ?, categoria = ?, valor = ?, tipo = ?, dono = ?, rateio = ?, observacao = ?, parcela = ?
-      WHERE id = ?
-    """, (
-        row.get("Data", ""),
-        row.get("Estabelecimento", ""),
-        row.get("Categoria", ""),
-        float(row.get("Valor") or 0),
-        row.get("Tipo", ""),
-        row.get("Dono", ""),
-        row.get("Rateio", ""),
-        row.get("Observacao", ""),
-        row.get("Parcela", ""),
-        tx_id,
-    ))
-    conn.commit()
-    conn.close()
-    return True, "Lançamento atualizado"
-
-def fetch_transaction_by_id(tx_id: int):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-      SELECT t.*, i.status
-      FROM transactions t
-      JOIN imports i ON i.batch_id = t.batch_id
-      WHERE t.id = ?
-      LIMIT 1
-    """, (tx_id,))
-    row = cur.fetchone()
-    conn.close()
-    return row
-
-def delete_transaction(tx_id: int, profile: str) -> tuple[bool, str]:
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT uploaded_by FROM transactions WHERE id = ?", (tx_id,))
-    row = cur.fetchone()
-    if not row:
-        conn.close()
-        return False, "Lançamento não encontrado"
-    if row["uploaded_by"] != profile:
-        conn.close()
-        return False, "Você só pode excluir lançamentos do seu perfil"
-
-    cur.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
-    conn.commit()
-    conn.close()
-    return True, "Lançamento excluído"
-
-def update_transaction(tx_id: int, profile: str, row: dict) -> tuple[bool, str]:
+def update_transaction(tx_id: int, profile: str, row: dict):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT uploaded_by FROM transactions WHERE id = ?", (tx_id,))
@@ -811,7 +846,7 @@ def fetch_imported_transactions(month_ref: str):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-      SELECT t.*, i.source, i.filename, i.status
+      SELECT t.*, i.filename, i.status, i.source
       FROM transactions t
       JOIN imports i ON i.batch_id = t.batch_id
       WHERE t.month_ref = ?
@@ -832,7 +867,62 @@ def fetch_house_transactions(month_ref: str):
       WHERE t.month_ref = ?
         AND i.status = 'imported'
         AND t.dono = 'Casa'
-@@ -856,93 +1041,253 @@ def get_investment(month_ref: str, profile: str):
+      ORDER BY t.id DESC
+    """, (month_ref,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+def get_lock(month_ref: str, profile: str) -> bool:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+      SELECT locked
+      FROM month_locks
+      WHERE month_ref = ? AND profile = ?
+      LIMIT 1
+    """, (month_ref, profile))
+    row = cur.fetchone()
+    conn.close()
+    return bool(row["locked"]) if row else False
+
+def set_lock(month_ref: str, profile: str, locked: bool):
+    now = dt.datetime.utcnow().isoformat(timespec="seconds") if locked else None
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+      SELECT id FROM month_locks
+      WHERE month_ref = ? AND profile = ?
+    """, (month_ref, profile))
+    row = cur.fetchone()
+
+    if row:
+        cur.execute("""
+          UPDATE month_locks
+          SET locked = ?, locked_at = ?
+          WHERE month_ref = ? AND profile = ?
+        """, (1 if locked else 0, now, month_ref, profile))
+    else:
+        cur.execute("""
+          INSERT INTO month_locks (month_ref, profile, locked, locked_at)
+          VALUES (?, ?, ?, ?)
+        """, (month_ref, profile, 1 if locked else 0, now))
+    conn.commit()
+    conn.close()
+
+def get_investment(month_ref: str, profile: str):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+      SELECT amount, note
+      FROM investments
+      WHERE month_ref = ? AND profile = ?
+      LIMIT 1
+    """, (month_ref, profile))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return {"amount": 0.0, "note": ""}
     return {"amount": float(row["amount"] or 0), "note": row["note"] or ""}
 
 def upsert_investment(month_ref: str, profile: str, amount: float, note: str):
@@ -870,19 +960,6 @@ def list_investment_items(month_ref: str, profile: str):
     rows = cur.fetchall()
     conn.close()
     return rows
-
-def replace_investment_items(month_ref: str, profile: str, items: list[tuple[str, float]]):
-    now = dt.datetime.utcnow().isoformat(timespec="seconds")
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM investment_items WHERE month_ref = ? AND profile = ?", (month_ref, profile))
-    for label, amount in items:
-        cur.execute("""
-          INSERT INTO investment_items (month_ref, profile, label, amount, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        """, (month_ref, profile, label, float(amount or 0), now, now))
-    conn.commit()
-    conn.close()
 
 def upsert_investment_item(month_ref: str, profile: str, label: str, amount: float):
     now = dt.datetime.utcnow().isoformat(timespec="seconds")
@@ -928,10 +1005,7 @@ def _month_ref_shift(month_ref: str, delta: int) -> str:
     return f"{y}{m:02d}"
 
 def last_n_month_refs(month_ref: str, n: int = 12):
-    refs = []
-    for i in range(n-1, -1, -1):
-        refs.append(_month_ref_shift(month_ref, -i))
-    return refs
+    return [_month_ref_shift(month_ref, -i) for i in range(n - 1, -1, -1)]
 
 def month_label_br(month_ref: str) -> str:
     names = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
@@ -943,28 +1017,32 @@ def month_name_pt(month_num: str) -> str:
     names = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
     try:
         m = int(month_num)
-        return names[m-1]
-    except:
+        return names[m - 1]
+    except Exception:
         return str(month_num)
 
 def compute_category_history(month_ref: str, mode: str, profile: str):
     refs = last_n_month_refs(month_ref, 12)
     cat_map = {}
+
     for rref in refs:
         rows = fetch_imported_transactions(rref)
         for r in rows:
-            val = max(signed_value(r["tipo"], r["valor"]), 0.0)
+            raw_signed = signed_value(r["tipo"], r["valor"])
+            expense_val = abs(raw_signed) if raw_signed < 0 else 0.0
             cat = r["categoria"] or "Sem categoria"
+
             if mode == "casa":
                 if r["dono"] != "Casa":
                     continue
             else:
                 if not (r["uploaded_by"] == profile and r["dono"] == profile):
                     continue
+
             if cat not in cat_map:
                 cat_map[cat] = [0.0 for _ in refs]
             idx = refs.index(rref)
-            cat_map[cat][idx] += val
+            cat_map[cat][idx] += expense_val
 
     top = sorted(cat_map.items(), key=lambda x: sum(x[1]), reverse=True)[:8]
     labels = [month_label_br(x) for x in refs]
@@ -1013,17 +1091,36 @@ def compute_investment_history(month_ref: str, profile: str):
         "prev_ref": prev_ref,
     }
 
+def compute_casa(month_ref: str):
+    rows = fetch_imported_transactions(month_ref)
+    cat_map = {}
+    total_cost = 0.0
+
+    for r in rows:
+        if r["dono"] != "Casa":
+            continue
+        val = signed_value(r["tipo"], r["valor"])
+        cat = r["categoria"] or "Sem categoria"
+        if cat not in cat_map:
+            cat_map[cat] = {"total": 0.0, "items": []}
+        cat_map[cat]["total"] += abs(val) if val < 0 else -abs(val)
+        cat_map[cat]["items"].append(r)
+        total_cost += abs(val) if val < 0 else -abs(val)
+
+    cats_sorted = sorted(cat_map.items(), key=lambda x: abs(x[1]["total"]), reverse=True)
+    return {
+        "cats_sorted": cats_sorted,
+        "total_cost": total_cost,
+    }
+
 def compute_individual(month_ref: str, profile: str):
     rows = fetch_imported_transactions(month_ref)
 
     income_total = 0.0
-
     house_by_cat = {}
     house_total = 0.0
-
     my_personal_by_cat = {}
     my_personal_total = 0.0
-
     receivable_total = 0.0
     payable_total = 0.0
 
@@ -1031,30 +1128,26 @@ def compute_individual(month_ref: str, profile: str):
         if r["tipo"] == "Entrada" and r["uploaded_by"] == profile and r["dono"] == profile:
             income_total += abs(float(r["valor"] or 0))
 
-        val = signed_value(r["tipo"], r["valor"])
+        val = abs(float(r["valor"] or 0))
         cat = r["categoria"] or "Sem categoria"
 
-        # Responsabilidade Casa: entra no split
-        if r["dono"] == "Casa" and r["rateio"] in ("60_40", "50_50"):
+        if r["tipo"] == "Saida" and r["dono"] == "Casa" and r["rateio"] in ("60_40", "50_50"):
             sh = share_for(profile, r["rateio"])
             part = val * sh
             house_total += part
             house_by_cat[cat] = house_by_cat.get(cat, 0.0) + part
             continue
 
-        # Responsabilidade do próprio profile e rateio 100_meu
-        if r["rateio"] == "100_meu" and r["uploaded_by"] == profile and r["dono"] == profile:
+        if r["tipo"] == "Saida" and r["rateio"] == "100_meu" and r["uploaded_by"] == profile and r["dono"] == profile:
             my_personal_total += val
             my_personal_by_cat[cat] = my_personal_by_cat.get(cat, 0.0) + val
             continue
 
-        # 100_outro: fiz para o outro (eu paguei algo que era do outro)
-        if r["rateio"] == "100_outro" and r["uploaded_by"] == profile and r["dono"] != "Casa" and r["dono"] != profile:
+        if r["tipo"] == "Saida" and r["rateio"] == "100_outro" and r["uploaded_by"] == profile and r["dono"] != "Casa" and r["dono"] != profile:
             receivable_total += val
             continue
 
-        # 100_outro: o outro pagou algo que era meu (eu devo)
-        if r["rateio"] == "100_outro" and r["uploaded_by"] != profile and r["dono"] == profile:
+        if r["tipo"] == "Saida" and r["rateio"] == "100_outro" and r["uploaded_by"] != profile and r["dono"] == profile:
             payable_total += val
             continue
 
@@ -1066,9 +1159,7 @@ def compute_individual(month_ref: str, profile: str):
     saldo_pos_pagamentos = income["total"] - expenses_effective
     saldo_em_conta = saldo_pos_pagamentos - invested
 
-    invested_pct = 0.0
-    if income["total"] > 0:
-        invested_pct = invested / income["total"]
+    invested_pct = invested / income["total"] if income["total"] > 0 else 0.0
 
     cats_house = sorted(house_by_cat.items(), key=lambda x: x[1], reverse=True)
     cats_personal = sorted(my_personal_by_cat.items(), key=lambda x: x[1], reverse=True)
@@ -1086,13 +1177,27 @@ def compute_individual(month_ref: str, profile: str):
         "saldo_pos_pagamentos": saldo_pos_pagamentos,
         "saldo_em_conta": saldo_em_conta,
         "cats_house": cats_house,
-@@ -998,53 +1343,52 @@ def year_month_select_html(selected_year: str, selected_month: str):
+        "cats_personal": cats_personal,
+    }
+
+def year_month_select_html(selected_year: str, selected_month: str):
+    this_year = dt.date.today().year
+    years = [str(y) for y in range(this_year - 2, this_year + 3)]
+    months = [f"{m:02d}" for m in range(1, 13)]
+
+    year_options = "".join([
+        f"<option value='{y}' {'selected' if y == selected_year else ''}>{y}</option>"
+        for y in years
+    ])
+    month_options = "".join([
+        f"<option value='{m}' {'selected' if m == selected_month else ''}>{month_name_pt(m)}</option>"
+        for m in months
+    ])
     return year_options, month_options
 
 def month_selector_block(selected_year: str, selected_month: str, action_url: str):
     year_options, month_options = year_month_select_html(selected_year, selected_month)
     month_ref = month_ref_from(selected_year, selected_month)
-    # auto-submit: sem botão Atualizar
     return f"""
       <form method="get" action="{action_url}" id="monthForm">
         <div class="grid2">
@@ -1112,10 +1217,7 @@ def month_selector_block(selected_year: str, selected_month: str, action_url: st
     """
 
 def template_path():
-    # template principal
     return os.path.join(os.path.dirname(__file__), "assets", "Template_Casella.xlsx")
-
-# ---------------- ROUTES ----------------
 
 @app.route("/")
 def home():
@@ -1139,7 +1241,39 @@ def home():
               <a class="btn btnPrimary btnLucas" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Lucas')}">Entrar como Lucas</a>
               <a class="btn btnPrimary btnRafa" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Rafa')}">Entrar como Rafa</a>
             </div>
-@@ -1086,801 +1430,914 @@ def perfil():
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+    return html
+
+@app.route("/set-profile/<profile>")
+def set_profile(profile):
+    if profile not in ALLOWED_PROFILES:
+        return redirect(url_for("home"))
+    session["profile"] = profile
+    return redirect(url_for("overview"))
+
+@app.route("/perfil")
+def perfil():
+    profile = session.get("profile", "")
+    if not profile:
+        return redirect(url_for("home"))
+
+    html = f"""
+    <!doctype html>
+    <html lang="pt-br">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Perfil</title>
+        {BASE_CSS}
+      </head>
+      <body>
+        {topbar_html(profile, "perfil")}
+        <div class="wrap">
+          <div class="card">
             <h2>Perfil</h2>
             <p>Trocar perfil.</p>
             <div class="grid2" style="margin-top:14px;">
@@ -1163,7 +1297,6 @@ def logout():
 
 @app.route("/download-template")
 def download_template():
-    # baixa o template do repo
     folder = os.path.join(os.path.dirname(__file__), "assets")
     candidates = [
         "Template_Casella.xlsx",
@@ -1247,14 +1380,13 @@ def investimentos():
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Investimentos</title>
         {BASE_CSS}
-        {DASHBOARD_CSS}
       </head>
       <body>
         {topbar_html(profile, "investimentos")}
         <div class="wrap">
           <div class="card">
             <h2>Investimentos</h2>
-            <p>Atualização mensal por categoria (valor total daquela categoria no mês).</p>
+            <p>Atualização mensal por categoria.</p>
             {month_selector_block(selected_year, selected_month, url_for('investimentos'))}
           </div>
 
@@ -1291,7 +1423,6 @@ def investimentos():
     """
     return html
 
-
 @app.route("/overview")
 def overview():
     profile = session.get("profile", "")
@@ -1303,7 +1434,7 @@ def overview():
     selected_month = request.args.get("Mes") or f"{now_m:02d}"
     month_ref = month_ref_from(selected_year, selected_month)
 
-    mode = request.args.get("mode") or "casa"  # casa | individual | investimentos
+    mode = request.args.get("mode") or "casa"
 
     overview_error = ""
     try:
@@ -1316,7 +1447,7 @@ def overview():
         casa = {"cats_sorted": [], "total_cost": 0.0}
         ind = {"cats_personal": [], "income": {"total": 0.0}, "expenses_effective": 0.0, "saldo_em_conta": 0.0}
         invest_total = 0.0
-        inv_hist = {"labels": [], "map": {}, "totals": [], "cur_total": 0.0, "prev_total": 0.0, "ctc": 0.0, "mom_pct": None}
+        inv_hist = {"labels": [], "map": {}, "totals": [], "cur_total": 0.0, "prev_total": 0.0, "ctc": 0.0, "mom": None, "prev_ref": ""}
 
     def category_details_html(cat, obj):
         rows = ""
@@ -1327,7 +1458,7 @@ def overview():
               <tr>
                 <td class="small">{_normalize_str(r['dt_text'])}</td>
                 <td class="small">{_normalize_str(r['estabelecimento'])}</td>
-                <td class="right">{brl(val)}</td>
+                <td class="right">{brl(abs(val))}</td>
                 <td class="small">{r['tipo']}</td>
                 <td class="small">{r['uploaded_by']}</td>
                 <td class="small">{r['rateio']}</td>
@@ -1335,9 +1466,10 @@ def overview():
             """
         if not rows:
             rows = "<tr><td colspan='6' class='small'>Sem itens</td></tr>"
+        total_value = obj["total"] if isinstance(obj, dict) else obj
         return f"""
         <details>
-          <summary>{cat} <span class="tag" style="margin-left:10px;">Total {brl(obj['total']) if isinstance(obj, dict) else brl(obj)}</span></summary>
+          <summary>{cat} <span class="tag" style="margin-left:10px;">Total {brl(abs(total_value))}</span></summary>
           <table>
             <thead><tr><th>Data</th><th>Descrição</th><th class="right">Valor</th><th>Tipo</th><th>Pago por</th><th>Rateio</th></tr></thead>
             <tbody>{rows}</tbody>
@@ -1353,7 +1485,7 @@ def overview():
             line_labels, line_map = [], {}
         receitas = 0.0
         despesas = 0.0
-        for cat, obj in category_items:
+        for _, obj in category_items:
             v = float(obj.get("total") or 0)
             if v >= 0:
                 despesas += v
@@ -1380,11 +1512,11 @@ def overview():
     pie_values = []
     for _, val in category_items[:8]:
         if isinstance(val, dict):
-            pie_values.append(round(max(float(val.get("total", 0)), 0), 2))
+            pie_values.append(round(abs(float(val.get("total", 0))), 2))
         elif isinstance(val, (int, float)):
-            pie_values.append(round(max(float(val), 0), 2))
+            pie_values.append(round(abs(float(val)), 2))
         else:
-            pie_values.append(round(max(sum([float(x or 0) for x in val]), 0), 2))
+            pie_values.append(round(abs(sum([float(x or 0) for x in val])), 2))
 
     pie_colors = ["#5ea1ff", "#ef4444", "#f59e0b", "#9ca3af", "#34d399", "#a78bfa", "#fb7185", "#22d3ee"]
 
@@ -1412,7 +1544,7 @@ def overview():
         mom_txt = "N/A" if inv_hist["mom"] is None else f"{inv_hist['mom']:.2f}%"
         detail_block = f"""
           <div class='card'>
-            <h3>Investimentos por categoria (acumulado janela)</h3>
+            <h3>Investimentos por categoria</h3>
             <table><thead><tr><th>Categoria</th><th class='right'>Acumulado</th></tr></thead><tbody>{inv_rows}</tbody></table>
             <div class='row' style='margin-top:10px;'>
               <span class='pill'>Mês anterior ({inv_hist['prev_ref']}): <b>{brl(inv_hist['prev_total'])}</b></span>
@@ -1476,7 +1608,7 @@ def overview():
         <div class="wrap">
           <div class="card darkBoard">
             <h2>Dashboard</h2>
-            <p style="color:#94a3b8;">Visão geral Casa, Individual e Investimentos no mesmo Overview.</p>
+            <p style="color:#94a3b8;">Visão geral Casa, Individual e Investimentos.</p>
             {overview_warning}
             {month_selector_block(selected_year, selected_month, url_for('overview'))}
             {toggle}
@@ -1490,11 +1622,11 @@ def overview():
 
             <div class="panelGrid">
               <div class="panel">
-                <h3>{'Investimentos por categoria (pizza)' if mode=='investimentos' else 'Despesas por Categoria'}</h3>
+                <h3>{'Investimentos por categoria' if mode=='investimentos' else 'Despesas por Categoria'}</h3>
                 <canvas id="pieChart" height="220"></canvas>
               </div>
               <div class="panel">
-                <h3>{'Investimentos mês a mês (barras empilhadas)' if mode=='investimentos' else 'Evolução mensal por categoria'}</h3>
+                <h3>{'Investimentos mês a mês' if mode=='investimentos' else 'Evolução mensal por categoria'}</h3>
                 <div class="catPick" id="catPick"></div>
                 <canvas id="lineChart" height="220"></canvas>
               </div>
@@ -1532,8 +1664,11 @@ def overview():
             pick.querySelectorAll('input[type="checkbox"]').forEach(el => {{
               el.addEventListener('change', () => {{
                 const c = el.dataset.cat;
-                if (el.checked) {{ if (!selected.includes(c)) selected.push(c); }}
-                else {{ selected = selected.filter(x => x !== c); }}
+                if (el.checked) {{
+                  if (!selected.includes(c)) selected.push(c);
+                }} else {{
+                  selected = selected.filter(x => x !== c);
+                }}
                 drawMain();
               }});
             }});
@@ -1578,15 +1713,12 @@ def overview():
     """
     return html
 
-
 @app.route("/entradas")
 def entradas():
-    # compatibilidade: tela unificada
     return redirect(url_for("transacoes", **request.args))
 
 @app.route("/saidas")
 def saidas():
-    # compatibilidade: tela unificada
     return redirect(url_for("transacoes", **request.args))
 
 @app.route("/transacoes", methods=["GET", "POST"])
@@ -1610,19 +1742,6 @@ def transacoes():
     preview_rows = []
     preview_batch_id = ""
     open_panel = _normalize_str(request.values.get("panel")) or ""
-
-    manual_defaults = {
-        "Data": "",
-        "Estabelecimento": "",
-        "Categoria": "",
-        "Valor": "",
-        "Tipo": "Saida",
-        "Dono": profile,
-        "Rateio": "100_meu",
-        "Observacao": "",
-        "Parcela": "",
-        "RepetirMeses": "1",
-    }
 
     if request.method == "POST":
         if lock and action not in {"unlock"}:
@@ -1692,15 +1811,11 @@ def transacoes():
 
             elif action == "manual":
                 open_panel = "manual"
-                form_data = dict(manual_defaults)
-                for k in form_data.keys():
-                    form_data[k] = _normalize_str(request.form.get(k))
-
-                valor = parse_value_expression(form_data["Valor"])
-                tipo = _normalize_str(form_data["Tipo"])
-                resp = _normalize_str(form_data["Dono"])
-                rateio = _canon_rateio(_normalize_str(form_data["Rateio"]))
-                repetir_total = int(parse_num_br(form_data["RepetirMeses"]) or 1)
+                valor = parse_value_expression(request.form.get("Valor"))
+                tipo = _normalize_str(request.form.get("Tipo"))
+                resp = _normalize_str(request.form.get("Dono"))
+                rateio = _canon_rateio(_normalize_str(request.form.get("Rateio")))
+                repetir_total = int(parse_num_br(request.form.get("RepetirMeses", "1")) or 1)
                 repetir_total = min(max(repetir_total, 1), 36)
 
                 if valor <= 0:
@@ -1718,15 +1833,15 @@ def transacoes():
 
                 if not errors:
                     base_row = {
-                        "Data": form_data["Data"],
-                        "Estabelecimento": form_data["Estabelecimento"],
-                        "Categoria": form_data["Categoria"],
+                        "Data": _normalize_str(request.form.get("Data")),
+                        "Estabelecimento": _normalize_str(request.form.get("Estabelecimento")),
+                        "Categoria": _normalize_str(request.form.get("Categoria")),
                         "Valor": valor,
                         "Tipo": tipo,
                         "Dono": resp,
                         "Rateio": rateio,
-                        "Observacao": form_data["Observacao"],
-                        "Parcela": form_data["Parcela"],
+                        "Observacao": _normalize_str(request.form.get("Observacao")),
+                        "Parcela": _normalize_str(request.form.get("Parcela")),
                     }
 
                     year = int(selected_year)
@@ -1781,13 +1896,13 @@ def transacoes():
         val = signed_value(r["tipo"], r["valor"])
         rows_html += f"""
         <tr>
-            <td class="small">{'Receita' if _normalize_str(r['tipo'])=='Entrada' else 'Despesa'}</td>
+            <td class="small">{'Receita' if _normalize_str(r['tipo']) == 'Entrada' else 'Despesa'}</td>
             <td class="small">{_normalize_str(r["dt_text"])}</td>
             <td class="small">{_normalize_str(r["uploaded_by"])}</td>
             <td class="small">{_normalize_str(r["dono"])}</td>
             <td class="small">{_normalize_str(r["categoria"])}</td>
             <td>{_normalize_str(r["estabelecimento"])}</td>
-            <td class="right">{brl(val)}</td>
+            <td class="right">{brl(abs(val))}</td>
             <td class="small">{_normalize_str(r["rateio"])}</td>
             <td class="small">{_normalize_str(r["observacao"])}</td>
             <td>
@@ -1808,11 +1923,7 @@ def transacoes():
 
     cat_datalist = "".join([f"<option value='{c}'></option>" for c in SUGGESTED_CATEGORIES])
     rateio_opts = "".join([f"<option value='{k}'>{k}</option>" for k in ["60/40", "50/50", "100%_Meu", "100%_Outro"]])
-    resp_opts = "".join([f"<option value='{r}' {'selected' if r==profile else ''}>{r}</option>" for r in ["Casa", "Lucas", "Rafa"]])
-    tipo_opts = "".join([
-        f"<option value='Saida'>Despesa</option>",
-        f"<option value='Entrada'>Receita</option>",
-    ])
+    resp_opts = "".join([f"<option value='{r}' {'selected' if r == profile else ''}>{r}</option>" for r in ["Casa", "Lucas", "Rafa"]])
     year_options, month_options = year_month_select_html(selected_year, selected_month)
     selected_month_name = month_name_pt(selected_month)
 
@@ -1823,7 +1934,7 @@ def transacoes():
     if preview_rows and preview_batch_id:
         table_rows = ""
         for r in preview_rows:
-            table_rows += f"<tr><td>{_normalize_str(r['Data'])}</td><td>{_normalize_str(r['Dono'])}</td><td>{_normalize_str(r['Categoria'])}</td><td>{_normalize_str(r['Estabelecimento'])}</td><td class='right'>{brl(signed_value(r['Tipo'], r['Valor']))}</td><td>{r['Rateio']}</td><td>{r['Tipo']}</td></tr>"
+            table_rows += f"<tr><td>{_normalize_str(r['Data'])}</td><td>{_normalize_str(r['Dono'])}</td><td>{_normalize_str(r['Categoria'])}</td><td>{_normalize_str(r['Estabelecimento'])}</td><td class='right'>{brl(abs(signed_value(r['Tipo'], r['Valor'])))}</td><td>{r['Rateio']}</td><td>{r['Tipo']}</td></tr>"
         preview_table = f"""
         <div class='card'>
           <h3>Preview do Excel</h3>
@@ -2023,6 +2134,7 @@ def transacoes():
           const btnDespesa = document.getElementById('btnDespesaTop');
           const btnReceita = document.getElementById('btnReceitaTop');
           const btnUpload = document.getElementById('btnUploadTop');
+
           function setTipoManual(tipo) {{
             if (!tipoManual || !btnDespesa || !btnReceita) return;
             tipoManual.value = tipo;
@@ -2034,11 +2146,12 @@ def transacoes():
               btnReceita.classList.remove('is-active');
             }}
           }}
+
           if (btnDespesa) btnDespesa.addEventListener('click', () => {{ setTipoManual('Saida'); openPanel('manual'); }});
           if (btnReceita) btnReceita.addEventListener('click', () => {{ setTipoManual('Entrada'); openPanel('manual'); }});
           if (btnUpload) btnUpload.addEventListener('click', () => openPanel('upload'));
 
-          const startPanel = '{open_panel if open_panel in ("manual", "upload") else ("upload" if preview_rows else "") }';
+          const startPanel = '{open_panel if open_panel in ("manual", "upload") else ("upload" if preview_rows else "")}';
           if (startPanel) openPanel(startPanel);
           setTipoManual('Saida');
         </script>
@@ -2046,11 +2159,6 @@ def transacoes():
     </html>
     """
     return html
-
-
-# --------- Observação importante sobre assets/.keep ----------
-# Não tem problema nenhum o /assets estar "no topo" do repositório.
-# É exatamente isso que a gente quer: app.py e a pasta assets no mesmo nível.
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
