@@ -480,7 +480,6 @@ def topbar_html(profile: str, active: str = "overview"):
     <div class="nav">
       {nav_btn("Overview", url_for("overview"), "overview")}
       {nav_btn("Transações", url_for("transacoes"), "transacoes")}
-      {nav_btn("Investimentos", url_for("investimentos"), "investimentos")}
       {nav_btn("Perfil", url_for("perfil"), "perfil")}
       <span class="pill">Competência: <b>{selected_year}/{selected_month}</b></span>
     </div>
@@ -1691,42 +1690,93 @@ def overview():
           </div>
         """
 
-    chart_data = json.dumps({
-        "mode": mode,
-        "pie_labels": pie_labels,
-        "pie_values": pie_values,
-        "pie_colors": pie_colors,
-        "line_labels": line_labels,
-        "line_map": line_map,
-        "inv_totals": inv_hist["totals"],
-    })
+    # Individual view
+    individual_block = ""
+    if mode == "individual":
+        personal_detail_map = {}
+        for r in fetch_imported_transactions(month_ref):
+            if r["uploaded_by"] == profile and r["dono"] == profile and r["rateio"] == "100_meu":
+                cat = r["categoria"] or "Sem categoria"
+                personal_detail_map.setdefault(cat, []).append(r)
 
-    DASHBOARD_CSS = """
-    <style>
-      .darkBoard{background: radial-gradient(1200px 700px at 15% 0%, #1e3a8a55 0%, transparent 50%), linear-gradient(180deg, #0b1226 0%, #121a33 100%); color:#e5e7eb; border-radius:20px; border:1px solid rgba(148,163,184,.25); padding:16px;}
-      .darkBoard h2,.darkBoard h3{color:#f8fafc}
-      .darkGrid{display:grid; grid-template-columns:repeat(4,1fr); gap:12px;}
-      .darkKpi{padding:14px; border-radius:16px; border:1px solid rgba(148,163,184,.2); background:rgba(15,23,42,.55)}
-      .darkKpi .label{font-size:12px; color:#93c5fd}
-      .darkKpi .value{font-size:28px; font-weight:900; color:#fff}
-      .panel{padding:14px; border-radius:16px; border:1px solid rgba(148,163,184,.2); background:rgba(15,23,42,.45)}
-      .panelGrid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;}
-      .catPick{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 0;}
-      .catPick label{font-weight:600; font-size:12px; color:#cbd5e1; display:inline-flex; align-items:center; gap:6px; margin:0}
-      @media (max-width: 900px){.darkGrid{grid-template-columns:1fr;} .panelGrid{grid-template-columns:1fr;}}
-    </style>
-    """
+        def cat_detail(cat, total, rows):
+            lines = ""
+            for r in rows[:200]:
+                lines += f"<tr><td>{_normalize_str(r['dt_text'])}</td><td>{_normalize_str(r['estabelecimento'])}</td><td class='right'>{brl(signed_value(r['tipo'], r['valor']))}</td><td>{_normalize_str(r['tipo'])}</td></tr>"
+            if not lines:
+                lines = "<tr><td colspan='4' class='small'>Sem itens</td></tr>"
+            return f"<details><summary>{cat} <span class='tag' style='margin-left:10px;'>Total {brl(total)}</span></summary><table><thead><tr><th>Data</th><th>Descrição</th><th class='right'>Valor</th><th>Tipo</th></tr></thead><tbody>{lines}</tbody></table></details>"
 
-    if mode == "investimentos":
-        receitas_label = "MoM%"
-        receitas_value = "N/A" if inv_hist["mom"] is None else f"{inv_hist['mom']:.2f}%"
-        despesas_label = "CtC (R$)"
-        despesas_value = brl(inv_hist["ctc"])
-    else:
-        receitas_label = "Receitas"
-        receitas_value = brl(receitas)
-        despesas_label = "Despesas"
-        despesas_value = brl(despesas)
+        def rows_from(items):
+            out = ""
+            for cat, val in items:
+                out += f"<tr><td>{cat}</td><td class='right'>{brl(val)}</td></tr>"
+            if not out:
+                out = "<tr><td colspan='2' class='small'>Sem dados</td></tr>"
+            return out
+
+        individual_block = f"""
+          <div class="card">
+            <h3>Resumo Individual ({profile})</h3>
+            <div class="kpi">
+              <div class="box">
+                <div class="label">Renda total</div>
+                <div class="value">{brl(ind["income"]["total"])}</div>
+              </div>
+              <div class="box">
+                <div class="label">Minha parte da casa</div>
+                <div class="value">{brl(ind["house_total"])}</div>
+              </div>
+              <div class="box">
+                <div class="label">Meu pessoal</div>
+                <div class="value">{brl(ind["my_personal_total"])}</div>
+              </div>
+              <div class="box">
+                <div class="label">A pagar para o outro</div>
+                <div class="value">{brl(ind["payable_total"])}</div>
+              </div>
+            </div>
+
+            <div class="kpi" style="margin-top:12px;">
+              <div class="box">
+                <div class="label">Gastos efetivos</div>
+                <div class="value">{brl(ind["expenses_effective"])}</div>
+                <div class="small">Casa + Pessoal + A pagar</div>
+              </div>
+              <div class="box">
+                <div class="label">Saldo pós pagamentos</div>
+                <div class="value">{brl(ind["saldo_pos_pagamentos"])}</div>
+              </div>
+              <div class="box">
+                <div class="label">Investir</div>
+                <div class="value">{brl(ind["invested"])}</div>
+                <div class="small">{pct(ind["invested_pct"])} da renda</div>
+              </div>
+              <div class="box">
+                <div class="label">Saldo em conta</div>
+                <div class="value">{brl(ind["saldo_em_conta"])}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Minha parte da casa por categoria</h3>
+            <table>
+              <thead><tr><th>Categoria</th><th class="right">Valor</th></tr></thead>
+              <tbody>{rows_from(ind["cats_house"])}</tbody>
+            </table>
+          </div>
+
+          <div class="card">
+            <h3>Meu pessoal por categoria</h3>
+            <table>
+              <thead><tr><th>Categoria</th><th class="right">Valor</th></tr></thead>
+              <tbody>{rows_from(ind["cats_personal"])}</tbody>
+            </table>
+            <h3 style="margin-top:14px;">Detalhes do pessoal (clique para abrir)</h3>
+            {''.join([cat_detail(cat, val, personal_detail_map.get(cat, [])) for cat, val in ind["cats_personal"]]) or "<p class='small'>Sem detalhes.</p>"}
+          </div>
+        """
 
     html = f"""
     <!doctype html>
@@ -1746,104 +1796,15 @@ def overview():
             <p style="color:#94a3b8;">Visão geral Casa, Individual e Investimentos no mesmo Overview.</p>
             {month_selector_block(selected_year, selected_month, url_for('overview'))}
             {toggle}
-
-            <div class="darkGrid" style="margin-top:12px;">
-              <div class="darkKpi"><div class="label">Saldo atual ({mode.title()})</div><div class="value">{brl(saldo) if mode!='investimentos' else brl(inv_hist['cur_total'])}</div></div>
-              <div class="darkKpi"><div class="label">{receitas_label}</div><div class="value">{receitas_value}</div></div>
-              <div class="darkKpi"><div class="label">{despesas_label}</div><div class="value">{despesas_value}</div></div>
-              <div class="darkKpi"><div class="label">Patrimônio/Investimentos</div><div class="value">{brl(invest_total)}</div></div>
-            </div>
-
-            <div class="panelGrid">
-              <div class="panel">
-                <h3>{'Investimentos por categoria (pizza)' if mode=='investimentos' else 'Despesas por Categoria'}</h3>
-                <canvas id="pieChart" height="220"></canvas>
-              </div>
-              <div class="panel">
-                <h3>{'Investimentos mês a mês (barras empilhadas)' if mode=='investimentos' else 'Evolução mensal por categoria'}</h3>
-                <div class="catPick" id="catPick"></div>
-                <canvas id="lineChart" height="220"></canvas>
-              </div>
-            </div>
           </div>
 
-          {detail_block}
+          {casa_block}
+          {individual_block}
         </div>
-
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <script>
-          const payload = {chart_data};
-          const pieCtx = document.getElementById('pieChart');
-          if (pieCtx) {{
-            new Chart(pieCtx, {{
-              type: 'doughnut',
-              data: {{ labels: payload.pie_labels, datasets: [{{ data: payload.pie_values, backgroundColor: payload.pie_colors }}] }},
-              options: {{ plugins: {{ legend: {{ position: 'bottom', labels: {{ color: '#e5e7eb' }} }} }} }}
-            }});
-          }}
-
-          const allCats = Object.keys(payload.line_map || {{}});
-          const pick = document.getElementById('catPick');
-          const colors = ['#5ea1ff','#ef4444','#f59e0b','#34d399','#a78bfa','#fb7185','#22d3ee','#9ca3af','#10b981','#f97316'];
-          let selected = allCats.slice(0, Math.min(3, allCats.length));
-
-          function buildSelectors() {{
-            if (!pick) return;
-            pick.innerHTML = '';
-            allCats.forEach((cat, idx) => {{
-              const id = 'cat_' + idx;
-              const checked = selected.includes(cat) ? 'checked' : '';
-              pick.insertAdjacentHTML('beforeend', `<label><input type="checkbox" id="${{id}}" data-cat="${{cat}}" ${{checked}}> ${{cat}}</label>`);
-            }});
-            pick.querySelectorAll('input[type="checkbox"]').forEach(el => {{
-              el.addEventListener('change', () => {{
-                const c = el.dataset.cat;
-                if (el.checked) {{ if (!selected.includes(c)) selected.push(c); }}
-                else {{ selected = selected.filter(x => x !== c); }}
-                drawMain();
-              }});
-            }});
-          }}
-
-          let mainChart = null;
-          function drawMain() {{
-            const ctx = document.getElementById('lineChart');
-            if (!ctx) return;
-            if (mainChart) mainChart.destroy();
-
-            const datasets = selected.map((cat, idx) => ({{
-              label: cat,
-              data: payload.line_map[cat] || [],
-              borderColor: colors[idx % colors.length],
-              backgroundColor: colors[idx % colors.length] + '55',
-              tension: 0.25,
-              fill: false,
-              stack: 'inv'
-            }}));
-
-            const isInv = payload.mode === 'investimentos';
-            mainChart = new Chart(ctx, {{
-              type: isInv ? 'bar' : 'line',
-              data: {{ labels: payload.line_labels, datasets }},
-              options: {{
-                responsive: true,
-                scales: {{
-                  x: {{ ticks: {{ color: '#cbd5e1' }}, stacked: isInv }},
-                  y: {{ ticks: {{ color: '#cbd5e1' }}, stacked: isInv }}
-                }},
-                plugins: {{ legend: {{ labels: {{ color: '#e5e7eb' }} }} }}
-              }}
-            }});
-          }}
-
-          buildSelectors();
-          drawMain();
-        </script>
       </body>
     </html>
     """
     return html
-
 
 @app.route("/entradas")
 def entradas():
@@ -2030,7 +1991,6 @@ def transacoes():
                         errors.append(f"Falha ao ler arquivo: {e}")
 
             elif action == "excel_confirm":
-                open_panel = "upload"
                 preview_batch_id = _normalize_str(request.form.get("preview_batch_id"))
                 ok, msg = finalize_import(preview_batch_id, profile)
                 info = msg
@@ -2047,7 +2007,6 @@ def transacoes():
         val = signed_value(r["tipo"], r["valor"])
         rows_html += f"""
         <tr>
-            <td class="small">{'Receita' if _normalize_str(r['tipo'])=='Entrada' else 'Despesa'}</td>
             <td class="small">{_normalize_str(r["dt_text"])}</td>
             <td class="small">{_normalize_str(r["uploaded_by"])}</td>
             <td class="small">{_normalize_str(r["dono"])}</td>
@@ -2055,7 +2014,7 @@ def transacoes():
             <td>{_normalize_str(r["estabelecimento"])}</td>
             <td class="right">{brl(val)}</td>
             <td class="small">{_normalize_str(r["rateio"])}</td>
-            <td class="small">{_normalize_str(r["observacao"])}</td>
+            <td class="small">{_normalize_str(r["tipo"])}</td>
             <td>
               <a class="btn btnGhost" href="{url_for('transacoes')}?Ano={selected_year}&Mes={selected_month}&edit_id={r['id']}">Editar</a>
               <form method="post" style="display:inline-block; margin-left:6px;" onsubmit="return confirm('Excluir este lançamento?');">
@@ -2070,7 +2029,7 @@ def transacoes():
         """
 
     if not rows_html:
-        rows_html = "<tr><td colspan='10' class='small'>Sem transações importadas</td></tr>"
+        rows_html = "<tr><td colspan='9' class='small'>Sem transações importadas</td></tr>"
 
     cat_datalist = "".join([f"<option value='{c}'></option>" for c in SUGGESTED_CATEGORIES])
     rateio_opts = "".join([f"<option value='{k}'>{k}</option>" for k in ["60/40", "50/50", "100%_Meu", "100%_Outro"]])
@@ -2079,8 +2038,6 @@ def transacoes():
         f"<option value='Saida'>Despesa</option>",
         f"<option value='Entrada'>Receita</option>",
     ])
-    year_options, month_options = year_month_select_html(selected_year, selected_month)
-    selected_month_name = month_name_pt(selected_month)
 
     err_block = f"<div class='card'><div class='errorBox'>{'<br/>'.join(errors)}</div></div>" if errors else ""
     info_block = f"<div class='card'><div class='{'okBox' if info_ok else 'errorBox'}'><b>{info}</b></div></div>" if info else ""
@@ -2160,84 +2117,57 @@ def transacoes():
             <div class='row space'>
               <div>
                 <h2>Transações</h2>
-                <p>Controle do mês e ações rápidas para input manual ou Excel.</p>
+                <p>Entradas e saídas em um único lugar (Receita/Despesa).</p>
               </div>
-              <div>
-                <form method='get' action='{url_for('transacoes')}' id='monthFormTx' class='controlBar' style='justify-content:flex-end;'>
-                  <select class='selectCompact' name='Mes' onchange="document.getElementById('monthFormTx').submit()">{month_options}</select>
-                  <select class='selectCompact' name='Ano' onchange="document.getElementById('monthFormTx').submit()">{year_options}</select>
-                </form>
-                <div class='row' style='justify-content:flex-end; margin-top:8px;'>
-                  {lock_controls}
-                </div>
-              </div>
+              <div class='row'>{lock_banner}{lock_controls}</div>
             </div>
-            <div class='row' style='margin-top:8px;'>{lock_banner}<span class='pill'>Referência: <b>{selected_month_name}/{selected_year}</b></span></div>
+            {month_selector_block(selected_year, selected_month, url_for('transacoes'))}
           </div>
 
           {err_block}
           {info_block}
 
           <div class='card'>
-            <h3>Inputs</h3>
-            <p class='small'>Clique no botão para abrir o input desejado.</p>
-
-            <div class='row' style='margin:10px 0 12px;'>
-              <button id='btnReceitaTop' class='btn btnIncome' type='button' {'disabled' if lock else ''}>+ Receita</button>
-              <button id='btnDespesaTop' class='btn btnExpense' type='button' {'disabled' if lock else ''}>- Despesa</button>
-              <button id='btnUploadTop' class='btn btnGhost' type='button' {'disabled' if lock else ''}>Upload Excel</button>
-              <a class='btn btnGhost' href='{url_for('download_template')}'>Download template</a>
-            </div>
-
-            <div id='manualPanel' style='display:none;'>
-              <h4 style='margin:0 0 8px;'>Input manual</h4>
-              <form method='post'>
-                  <input type='hidden' name='Ano' value='{selected_year}'>
-                  <input type='hidden' name='Mes' value='{selected_month}'>
-                  <input type='hidden' name='action' value='manual'>
-                  <input id='tipoManual' type='hidden' name='Tipo' value='Saida'>
-
-                  <div class='grid2'>
-                    <div><label>Descrição</label><input type='text' name='Estabelecimento' {'disabled' if lock else ''}/></div>
-                    <div><label>Categoria</label><input list='cats' type='text' name='Categoria' {'disabled' if lock else ''}/><datalist id='cats'>{cat_datalist}</datalist></div>
-                  </div>
-
-                  <div class='grid2'>
-                    <div><label>Valor</label><input type='text' name='Valor' placeholder='ex: 100+130+250' {'disabled' if lock else ''}/></div>
-                    <div><label>Responsabilidade</label><select name='Dono' {'disabled' if lock else ''}>{resp_opts}</select></div>
-                  </div>
-
-                  <div class='grid2'>
-                    <div><label>Rateio</label><select name='Rateio' {'disabled' if lock else ''}>{rateio_opts}</select></div>
-                    <div><label>Observação</label><input type='text' name='Observacao' {'disabled' if lock else ''}/></div>
-                  </div>
-
-                  <div class='grid3'>
-                    <div><label>Repetir por quantos meses</label><input type='number' name='RepetirMeses' value='1' min='1' max='36' {'disabled' if lock else ''}/></div>
-                    <div><label>Parcela</label><input type='text' name='Parcela' {'disabled' if lock else ''}/></div>
-                    <div><label>Data (opcional)</label><input type='date' name='Data' {'disabled' if lock else ''}/></div>
-                  </div>
-
-                  <div class='row' style='margin-top:12px;'><button class='btn btnPrimary' type='submit' {'disabled' if lock else ''}>Salvar transação</button></div>
-              </form>
-            </div>
-
-            <div id='uploadPanel' style='display:none; margin-top:8px;'>
-              <h4 style='margin:0 0 8px;'>Upload por Excel</h4>
-              <form id='excelForm' method='post' enctype='multipart/form-data'>
-                  <input type='hidden' name='Ano' value='{selected_year}'>
-                  <input type='hidden' name='Mes' value='{selected_month}'>
-                  <input type='hidden' name='action' value='excel_preview'>
-                  <input id='fileInput' type='file' name='file' accept='.xlsx,.xls' style='display:none;' {'disabled' if lock else ''}/>
-                  <div id='dropZone' class='card' style='margin-top:0; border-style:dashed; text-align:center; padding:28px; cursor:pointer;'>
-                    <b>Arraste o Excel aqui</b><br/>
-                    <span class='small'>ou clique para selecionar o arquivo</span>
-                  </div>
-              </form>
-            </div>
+            <h3>Upload do mês (Excel)</h3>
+            <form id='excelForm' method='post' enctype='multipart/form-data' style='margin-top:12px;'>
+              <input type='hidden' name='Ano' value='{selected_year}'>
+              <input type='hidden' name='Mes' value='{selected_month}'>
+              <input type='hidden' name='action' value='excel_preview'>
+              <label>Arquivo Excel</label>
+              <input id='fileInput' type='file' name='file' accept='.xlsx,.xls' {'disabled' if lock else ''}/>
+            </form>
           </div>
 
           {preview_table}
+
+          <div class='card'>
+            <h3>Adicionar manual</h3>
+            <p class='small'>No campo valor você pode usar calculadora simples, ex.: 100+130+250.</p>
+            <form method='post'>
+              <input type='hidden' name='Ano' value='{selected_year}'>
+              <input type='hidden' name='Mes' value='{selected_month}'>
+              <input type='hidden' name='action' value='manual'>
+              <div class='grid2'>
+                <div><label>Data</label><input type='date' name='Data' {'disabled' if lock else ''}/></div>
+                <div><label>Valor</label><input type='text' name='Valor' placeholder='ex: 100+130+250' {'disabled' if lock else ''}/></div>
+              </div>
+              <div class='grid2'>
+                <div><label>Descrição</label><input type='text' name='Estabelecimento' {'disabled' if lock else ''}/></div>
+                <div><label>Categoria</label><input list='cats' type='text' name='Categoria' {'disabled' if lock else ''}/><datalist id='cats'>{cat_datalist}</datalist></div>
+              </div>
+              <div class='grid3'>
+                <div><label>Tipo</label><select name='Tipo' {'disabled' if lock else ''}>{tipo_opts}</select></div>
+                <div><label>Responsabilidade</label><select name='Dono' {'disabled' if lock else ''}>{resp_opts}</select></div>
+                <div><label>Rateio</label><select name='Rateio' {'disabled' if lock else ''}>{rateio_opts}</select></div>
+              </div>
+              <div class='grid3'>
+                <div><label>Repetir por quantos meses</label><input type='number' name='RepetirMeses' value='1' min='1' max='36' {'disabled' if lock else ''}/></div>
+                <div><label>Parcela</label><input type='text' name='Parcela' {'disabled' if lock else ''}/></div>
+                <div><label>Observação</label><input type='text' name='Observacao' {'disabled' if lock else ''}/></div>
+              </div>
+              <div class='row' style='margin-top:12px;'><button class='btn btnPrimary' type='submit' {'disabled' if lock else ''}>Salvar transação</button></div>
+            </form>
+          </div>
 
           {edit_form}
 
@@ -2245,7 +2175,7 @@ def transacoes():
             <h3>Lista do mês</h3>
             <table>
               <thead>
-                <tr><th>Tipo</th><th>Data</th><th>Pago por</th><th>Responsabilidade</th><th>Categoria</th><th>Descrição</th><th class='right'>Valor</th><th>Rateio</th><th>Observações</th><th>Ações</th></tr>
+                <tr><th>Data</th><th>Pago por</th><th>Resp.</th><th>Categoria</th><th>Descrição</th><th class='right'>Valor</th><th>Rateio</th><th>Tipo</th><th>Ações</th></tr>
               </thead>
               <tbody>{rows_html}</tbody>
             </table>
@@ -2254,15 +2184,6 @@ def transacoes():
         <script>
           const fileInput = document.getElementById('fileInput');
           const form = document.getElementById('excelForm');
-          const dropZone = document.getElementById('dropZone');
-          const manualPanel = document.getElementById('manualPanel');
-          const uploadPanel = document.getElementById('uploadPanel');
-
-          function openPanel(panel) {{
-            if (manualPanel) manualPanel.style.display = panel === 'manual' ? 'block' : 'none';
-            if (uploadPanel) uploadPanel.style.display = panel === 'upload' ? 'block' : 'none';
-          }}
-
           if (fileInput && form) {{
             fileInput.addEventListener('change', () => {{
               if (fileInput.files && fileInput.files.length > 0) {{
@@ -2271,41 +2192,22 @@ def transacoes():
             }});
           }}
 
-          if (dropZone && fileInput) {{
-            dropZone.addEventListener('click', () => fileInput.click());
-            dropZone.addEventListener('dragover', (e) => {{ e.preventDefault(); dropZone.style.borderColor = '#60a5fa'; }});
-            dropZone.addEventListener('dragleave', () => {{ dropZone.style.borderColor = ''; }});
-            dropZone.addEventListener('drop', (e) => {{
-              e.preventDefault();
-              dropZone.style.borderColor = '';
-              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {{
-                fileInput.files = e.dataTransfer.files;
-                form.submit();
-              }}
-            }});
-          }}
-
           const tipoManual = document.getElementById('tipoManual');
-          const btnDespesa = document.getElementById('btnDespesaTop');
-          const btnReceita = document.getElementById('btnReceitaTop');
-          const btnUpload = document.getElementById('btnUploadTop');
+          const btnDespesa = document.getElementById('btnDespesa');
+          const btnReceita = document.getElementById('btnReceita');
           function setTipoManual(tipo) {{
             if (!tipoManual || !btnDespesa || !btnReceita) return;
             tipoManual.value = tipo;
             if (tipo === 'Entrada') {{
-              btnReceita.classList.add('is-active');
-              btnDespesa.classList.remove('is-active');
+              btnReceita.classList.add('btnPrimary');
+              btnDespesa.classList.remove('btnPrimary');
             }} else {{
-              btnDespesa.classList.add('is-active');
-              btnReceita.classList.remove('is-active');
+              btnDespesa.classList.add('btnPrimary');
+              btnReceita.classList.remove('btnPrimary');
             }}
           }}
-          if (btnDespesa) btnDespesa.addEventListener('click', () => {{ setTipoManual('Saida'); openPanel('manual'); }});
-          if (btnReceita) btnReceita.addEventListener('click', () => {{ setTipoManual('Entrada'); openPanel('manual'); }});
-          if (btnUpload) btnUpload.addEventListener('click', () => openPanel('upload'));
-
-          const startPanel = '{open_panel if open_panel in ("manual", "upload") else ("upload" if preview_rows else "") }';
-          if (startPanel) openPanel(startPanel);
+          if (btnDespesa) btnDespesa.addEventListener('click', () => setTipoManual('Saida'));
+          if (btnReceita) btnReceita.addEventListener('click', () => setTipoManual('Entrada'));
           setTipoManual('Saida');
         </script>
       </body>
