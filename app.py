@@ -1782,35 +1782,24 @@ def transacoes():
               <input type='hidden' name='Ano' value='{selected_year}'>
               <input type='hidden' name='Mes' value='{selected_month}'>
               <input type='hidden' name='action' value='manual'>
-              <input id='tipoManual' type='hidden' name='Tipo' value='Saida'>
-
-              <label>Tipo da transação</label>
-              <div class='row'>
-                <button id='btnDespesa' class='btn btnDanger' type='button' {'disabled' if lock else ''}>Despesa</button>
-                <button id='btnReceita' class='btn btnRafa' type='button' {'disabled' if lock else ''}>Receita</button>
+              <div class='grid2'>
+                <div><label>Data</label><input type='date' name='Data' {'disabled' if lock else ''}/></div>
+                <div><label>Valor</label><input type='text' name='Valor' placeholder='ex: 100+130+250' {'disabled' if lock else ''}/></div>
               </div>
-
               <div class='grid2'>
                 <div><label>Descrição</label><input type='text' name='Estabelecimento' {'disabled' if lock else ''}/></div>
                 <div><label>Categoria</label><input list='cats' type='text' name='Categoria' {'disabled' if lock else ''}/><datalist id='cats'>{cat_datalist}</datalist></div>
               </div>
-
-              <div class='grid2'>
-                <div><label>Valor</label><input type='text' name='Valor' placeholder='ex: 100+130+250' {'disabled' if lock else ''}/></div>
+              <div class='grid3'>
+                <div><label>Tipo</label><select name='Tipo' {'disabled' if lock else ''}>{tipo_opts}</select></div>
                 <div><label>Responsabilidade</label><select name='Dono' {'disabled' if lock else ''}>{resp_opts}</select></div>
-              </div>
-
-              <div class='grid2'>
                 <div><label>Rateio</label><select name='Rateio' {'disabled' if lock else ''}>{rateio_opts}</select></div>
-                <div><label>Observação</label><input type='text' name='Observacao' {'disabled' if lock else ''}/></div>
               </div>
-
               <div class='grid3'>
                 <div><label>Repetir por quantos meses</label><input type='number' name='RepetirMeses' value='1' min='1' max='36' {'disabled' if lock else ''}/></div>
                 <div><label>Parcela</label><input type='text' name='Parcela' {'disabled' if lock else ''}/></div>
-                <div><label>Data (opcional)</label><input type='date' name='Data' {'disabled' if lock else ''}/></div>
+                <div><label>Observação</label><input type='text' name='Observacao' {'disabled' if lock else ''}/></div>
               </div>
-
               <div class='row' style='margin-top:12px;'><button class='btn btnPrimary' type='submit' {'disabled' if lock else ''}>Salvar transação</button></div>
             </form>
           </div>
