@@ -11,11 +11,24 @@ import pandas as pd
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-later")
 
+# =========================================================
+# PATHS BASE
+# =========================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# =========================================================
 # Render persistent disk
+# =========================================================
+# IMPORTANTE:
+# No Render, deixe o disk montado em /var/data
+# e crie a env var:
+# RENDER_DISK_PATH=/var/data
 DISK_PATH = os.getenv("RENDER_DISK_PATH", "/var/data")
 DB_PATH = os.getenv("DB_PATH", os.path.join(DISK_PATH, "casella.db"))
 
-# Split padrão
+# =========================================================
+# CONFIG GERAL
+# =========================================================
 LUCAS_SHARE = 0.40
 RAFA_SHARE = 0.60
 
@@ -86,48 +99,78 @@ SUGGESTED_CATEGORIES = [
     "Viagens",
 ]
 
+# =========================================================
+# CSS BASE
+# =========================================================
 BASE_CSS = """
 <style>
   :root{
-    --bg1:#0b1020;
-    --bg2:#131c35;
-    --card:rgba(15,23,42,.48);
+    --bg1:#07101f;
+    --bg2:#101a33;
+    --card:rgba(15,23,42,.50);
     --text:#e6edf8;
     --muted:#a4b4cf;
     --border: rgba(148,163,184,.22);
     --shadow: 0 18px 42px rgba(2,8,23,.45);
     --radius: 18px;
-    --lucas1:#1d4ed8;
-    --lucas2:#60a5fa;
-    --rafa1:#16a34a;
-    --rafa2:#86efac;
+
+    /* cores mais óbvias por perfil */
+    --lucas1:#4a1020;   /* vinho escuro */
+    --lucas2:#6b1830;
+
+    --rafa1:#26382c;    /* verde militar escuro */
+    --rafa2:#395342;
+
     --neutral1:#2563eb;
     --neutral2:#1d4ed8;
   }
 
   *{box-sizing:border-box}
+
   body{
     margin:0;
     font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif;
     color:var(--text);
-    background: radial-gradient(1200px 700px at 20% 0%, rgba(37,99,235,.24) 0%, rgba(11,16,32,0) 58%),
-                radial-gradient(1000px 640px at 85% 0%, rgba(20,184,166,.14) 0%, rgba(11,16,32,0) 55%),
-                linear-gradient(180deg, #070b16 0%, #0d1427 100%);
+    background:
+      radial-gradient(1200px 700px at 20% 0%, rgba(37,99,235,.20) 0%, rgba(11,16,32,0) 58%),
+      radial-gradient(1000px 640px at 85% 0%, rgba(20,184,166,.10) 0%, rgba(11,16,32,0) 55%),
+      linear-gradient(180deg, #070b16 0%, #0d1427 100%);
     min-height:100vh;
   }
 
+  /* bloco principal agora ocupa bem mais da tela */
+  .wrap{
+    width:min(96vw, 1700px);
+    margin:0 auto;
+    padding:16px;
+  }
+
   .topbar{
-    position: sticky;
+    position:sticky;
     top:0;
     z-index:5;
     backdrop-filter: blur(10px);
-    background: rgba(7,11,22,.72);
-    border-bottom: 1px solid var(--border);
+    border-bottom:1px solid var(--border);
   }
 
-  .wrap{max-width:1100px; margin:0 auto; padding:16px;}
+  /* fundo do header por perfil */
+  .topbar.default{
+    background: rgba(7,11,22,.72);
+  }
+
+  .topbar.lucas{
+    background:
+      linear-gradient(90deg, rgba(74,16,32,.96) 0%, rgba(58,12,26,.96) 55%, rgba(30,10,16,.96) 100%);
+  }
+
+  .topbar.rafa{
+    background:
+      linear-gradient(90deg, rgba(38,56,44,.96) 0%, rgba(31,47,36,.96) 55%, rgba(20,28,22,.96) 100%);
+  }
+
   .row{display:flex; gap:12px; align-items:center; flex-wrap:wrap;}
   .space{justify-content:space-between;}
+
   .pill{
     display:inline-flex;
     align-items:center;
@@ -139,72 +182,142 @@ BASE_CSS = """
     font-size:12px;
     color:var(--muted);
   }
+
+  .pillProfileLucas{
+    background: rgba(74,16,32,.35);
+    border:1px solid rgba(255,255,255,.15);
+    color:#f8d7df;
+  }
+
+  .pillProfileRafa{
+    background: rgba(38,56,44,.35);
+    border:1px solid rgba(255,255,255,.15);
+    color:#d9eadf;
+  }
+
   .brand{
     display:flex;
     align-items:center;
     gap:10px;
   }
+
   .dot{
     width:10px; height:10px; border-radius:999px;
     background: linear-gradient(135deg, var(--neutral1), var(--neutral2));
     box-shadow: 0 0 0 4px rgba(37,99,235,.18);
   }
-  .dot.lucas{background: linear-gradient(135deg, var(--lucas1), var(--lucas2));}
-  .dot.rafa{background: linear-gradient(135deg, var(--rafa1), var(--rafa2));}
-  .nav{display:flex; gap:10px; flex-wrap:wrap;}
+
+  .dot.lucas{
+    background: linear-gradient(135deg, var(--lucas1), var(--lucas2));
+    box-shadow: 0 0 0 4px rgba(107,24,48,.22);
+  }
+
+  .dot.rafa{
+    background: linear-gradient(135deg, var(--rafa1), var(--rafa2));
+    box-shadow: 0 0 0 4px rgba(57,83,66,.22);
+  }
+
+  .nav{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
 
   .btn{
     appearance:none;
     border:1px solid var(--border);
     background: rgba(15,23,42,.66);
     color: var(--text);
-    padding:10px 14px;
-    border-radius:14px;
-    font-weight:800;
-    font-size:15px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-weight: 800;
+    font-size: 15px;
     cursor:pointer;
     text-decoration:none;
     display:inline-flex;
     align-items:center;
     justify-content:center;
     gap:8px;
+    transition: transform .06s ease, box-shadow .12s ease, border-color .12s ease;
   }
+
+  .btn:hover{
+    border-color: rgba(96,165,250,.52);
+    box-shadow: 0 10px 26px rgba(59,130,246,.25);
+  }
+
+  .btn:active{transform: translateY(1px);}
+
   .btnPrimary{
     border:0;
     color:white;
+    box-shadow: 0 16px 30px rgba(37,99,235,.34);
     background: linear-gradient(135deg, var(--neutral1), var(--neutral2));
   }
-  .btnLucas{ background: linear-gradient(135deg, var(--lucas1), var(--lucas2)); }
-  .btnRafa{ background: linear-gradient(135deg, var(--rafa1), var(--rafa2)); }
-  .btnGhost{ background: rgba(15,23,42,.46); }
+
+  /* botões principais por perfil */
+  .btnLucas{
+    border:0;
+    background: linear-gradient(135deg, var(--lucas1), var(--lucas2));
+    box-shadow: 0 16px 30px rgba(74,16,32,.35);
+    color:white;
+  }
+
+  .btnRafa{
+    border:0;
+    background: linear-gradient(135deg, var(--rafa1), var(--rafa2));
+    box-shadow: 0 16px 30px rgba(38,56,44,.32);
+    color:white;
+  }
+
+  .btnGhost{
+    background: rgba(15,23,42,.46);
+  }
+
   .btnDanger{
     border:0;
     color:white;
     background: linear-gradient(135deg, #b91c1c, #fb7185);
   }
-  .btnIncome{border:0; color:white; background: linear-gradient(135deg,#10b981,#34d399);}
-  .btnExpense{border:0; color:white; background: linear-gradient(135deg,#ef4444,#f43f5e);}
+
+  .btnIncome{
+    border:0;
+    color:white;
+    background: linear-gradient(135deg,#10b981,#34d399);
+  }
+
+  .btnExpense{
+    border:0;
+    color:white;
+    background: linear-gradient(135deg,#ef4444,#f43f5e);
+  }
 
   .card{
     background: rgba(15,23,42,.5);
-    border:1px solid var(--border);
-    border-radius:var(--radius);
-    padding:16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
     box-shadow: var(--shadow);
-    margin-top:14px;
+    margin-top: 14px;
   }
 
-  h1{margin:0 0 10px; font-size:30px;}
-  h2{margin:0 0 10px; font-size:26px;}
-  h3{margin:0 0 10px; font-size:22px;}
-  h4{margin:0 0 8px; font-size:18px;}
+  h1{margin:0 0 10px; font-size:30px; line-height:1.15;}
+  h2{margin:0 0 10px; font-size:26px; line-height:1.2;}
+  h3{margin:0 0 10px; font-size:22px; line-height:1.2;}
+  h4{margin:0 0 8px; font-size:18px; line-height:1.25;}
   p{margin:0 0 10px; color: var(--muted);}
 
-  label{font-weight:800; display:block; margin:10px 0 6px; font-size:14px;}
+  label{
+    font-weight:800;
+    display:block;
+    margin: 10px 0 6px;
+    font-size:14px;
+  }
+
   input[type="text"], input[type="number"], input[type="file"], input[type="date"], select, textarea{
     width:100%;
-    padding:10px 12px;
-    border-radius:14px;
+    padding: 10px 12px;
+    border-radius: 14px;
     border:1px solid var(--border);
     background: rgba(2,6,23,.46);
     color: var(--text);
@@ -212,71 +325,111 @@ BASE_CSS = """
     outline:none;
   }
 
+  /* dropdown aberto com fundo branco e texto preto */
+  select option{
+    background:#ffffff !important;
+    color:#000000 !important;
+  }
+
+  select optgroup{
+    background:#ffffff !important;
+    color:#000000 !important;
+  }
+
+  textarea{min-height:90px; resize:vertical;}
+
   .grid2{display:grid; grid-template-columns: 1fr 1fr; gap:12px;}
   .grid3{display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px;}
   .grid4{display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:12px;}
 
-  .kpi{display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px;}
+  .kpi{display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:12px;}
   .kpi .box{
     border:1px solid var(--border);
-    border-radius:16px;
+    border-radius: 16px;
     background: rgba(15,23,42,.42);
-    padding:12px;
+    padding: 12px;
   }
   .kpi .label{font-size:12px; color: var(--muted); margin-bottom:6px;}
   .kpi .value{font-size:20px; font-weight:900;}
 
   .right{text-align:right}
   .small{font-size:13px; color: var(--muted);}
+
   .okBox{
     border:1px solid rgba(22,163,74,.25);
     background: rgba(22,163,74,.16);
-    padding:12px;
-    border-radius:14px;
+    padding: 12px;
+    border-radius: 14px;
   }
+
   .errorBox{
     border:1px solid rgba(185,28,28,.25);
     background: rgba(185,28,28,.18);
-    padding:12px;
-    border-radius:14px;
+    padding: 12px;
+    border-radius: 14px;
   }
 
-  table{width:100%; border-collapse:collapse; margin-top:10px;}
-  th,td{border-bottom:1px solid rgba(148,163,184,.16); padding:10px 8px; vertical-align: top; font-size:14px;}
-  th{color:#cbd5e1; background: rgba(15,23,42,.88); position: sticky; top:58px; z-index:2;}
-  details{
-    border:1px solid rgba(15,23,42,.06);
-    background: rgba(15,23,42,.42);
-    border-radius:14px;
-    padding:10px 12px;
-    margin-top:10px;
+  table{width:100%; border-collapse: collapse; margin-top:10px;}
+  th,td{
+    border-bottom:1px solid rgba(148,163,184,.16);
+    padding: 10px 8px;
+    vertical-align: top;
+    font-size:14px;
   }
+  th{
+    color:#cbd5e1;
+    background: rgba(15,23,42,.88);
+    position: sticky;
+    top: 58px;
+    z-index:2;
+  }
+
+  details{
+    border: 1px solid rgba(15,23,42,.06);
+    background: rgba(15,23,42,.42);
+    border-radius: 14px;
+    padding: 10px 12px;
+    margin-top: 10px;
+  }
+
   summary{cursor:pointer; font-weight:900;}
+
   .tag{
-    display:inline-flex; gap:8px; align-items:center;
+    display:inline-flex;
+    gap:8px;
+    align-items:center;
     padding:6px 10px;
     border-radius:999px;
     border:1px solid rgba(15,23,42,.08);
     background: rgba(30,41,59,.62);
     font-size:12px;
-    color:#cbd5e1;
+    color: #cbd5e1;
   }
 
   .controlBar{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+
   .selectCompact{
-    min-width:140px;
+    min-width:160px;
     width:auto !important;
     border-radius:12px;
     background: rgba(2,6,23,.56);
   }
 
+  .is-active{
+    box-shadow:0 0 0 2px rgba(255,255,255,.25) inset, 0 8px 20px rgba(59,130,246,.28);
+  }
+
   @media (max-width: 900px){
-    .grid4,.grid3,.grid2,.kpi{grid-template-columns:1fr;}
-    th{top:118px;}
+    .grid4,.grid3,.grid2,.kpi{grid-template-columns: 1fr;}
+    th{top: 118px;}
+    .wrap{width:96vw;}
   }
 </style>
 """
 
+# =========================================================
+# HELPERS GERAIS
+# =========================================================
 def brl(x: float) -> str:
     try:
         x = float(x or 0)
@@ -296,6 +449,21 @@ def current_year_month():
 
 def month_ref_from(year_str: str, month_str: str) -> str:
     return f"{year_str}{month_str}"
+
+def month_name_pt(month_num: str) -> str:
+    names = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ]
+    try:
+        m = int(month_num)
+        return names[m - 1]
+    except Exception:
+        return str(month_num)
+
+def competencia_label(year_str: str, month_str: str) -> str:
+    # competência no formato completo, ex: Março/2026
+    return f"{month_name_pt(month_str)}/{year_str}"
 
 def get_db():
     db_dir = os.path.dirname(DB_PATH)
@@ -317,6 +485,9 @@ def ensure_column(conn, table: str, col: str, ddl: str):
         cur.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
         conn.commit()
 
+# =========================================================
+# INIT DB
+# =========================================================
 def init_db():
     conn = get_db()
     cur = conn.cursor()
@@ -412,6 +583,9 @@ def init_db():
 
 init_db()
 
+# =========================================================
+# HEADER / UI
+# =========================================================
 def profile_dot(profile: str) -> str:
     if profile == "Lucas":
         return "lucas"
@@ -422,7 +596,7 @@ def profile_dot(profile: str) -> str:
 def topbar_html(profile: str, active: str = "overview"):
     if not profile:
         return """
-        <div class="topbar">
+        <div class="topbar default">
           <div class="wrap">
             <div class="row space">
               <div class="brand">
@@ -442,25 +616,31 @@ def topbar_html(profile: str, active: str = "overview"):
     selected_year = request.values.get("Ano") or str(now_y)
     selected_month = request.values.get("Mes") or f"{now_m:02d}"
 
+    # competência agora sempre em formato completo
+    competencia = competencia_label(selected_year, selected_month)
+
+    topbar_class = "lucas" if profile == "Lucas" else "rafa"
+    pill_profile_class = "pillProfileLucas" if profile == "Lucas" else "pillProfileRafa"
+
     nav = f"""
     <div class="nav">
       {nav_btn("Overview", url_for("overview"), "overview")}
       {nav_btn("Transações", url_for("transacoes"), "transacoes")}
       {nav_btn("Investimentos", url_for("investimentos"), "investimentos")}
       {nav_btn("Perfil", url_for("perfil"), "perfil")}
-      <span class="pill">Competência: <b>{selected_year}/{selected_month}</b></span>
+      <span class="pill">Competência: <b>{competencia}</b></span>
     </div>
     """
 
     return f"""
-    <div class="topbar">
+    <div class="topbar {topbar_class}">
       <div class="wrap">
         <div class="row space">
           <div class="brand">
             <span class="dot {profile_dot(profile)}"></span>
             <div>
               <b>Casella</b><br/>
-              <span class="small">Perfil: <b>{profile}</b></span>
+              <span class="pill {pill_profile_class}">Perfil: <b>{profile}</b></span>
             </div>
           </div>
           {nav}
@@ -469,6 +649,9 @@ def topbar_html(profile: str, active: str = "overview"):
     </div>
     """
 
+# =========================================================
+# PARSERS / UTIL
+# =========================================================
 def compute_file_hash(raw_bytes: bytes) -> str:
     return hashlib.sha256(raw_bytes).hexdigest()
 
@@ -582,6 +765,9 @@ def share_for(profile: str, rateio: str) -> float:
         return 0.50
     return 1.0
 
+# =========================================================
+# EXCEL
+# =========================================================
 def read_excel_from_bytes(raw: bytes) -> pd.DataFrame:
     buf = io.BytesIO(raw)
     df = pd.read_excel(buf, engine="openpyxl")
@@ -652,6 +838,9 @@ def validate_transactions(df: pd.DataFrame):
 
     return errors, normalized_rows
 
+# =========================================================
+# IMPORTS / TRANSAÇÕES
+# =========================================================
 def is_duplicate_import(month_ref: str, profile: str, file_hash: str) -> bool:
     conn = get_db()
     cur = conn.cursor()
@@ -873,6 +1062,9 @@ def fetch_house_transactions(month_ref: str):
     conn.close()
     return rows
 
+# =========================================================
+# LOCKS
+# =========================================================
 def get_lock(month_ref: str, profile: str) -> bool:
     conn = get_db()
     cur = conn.cursor()
@@ -910,6 +1102,9 @@ def set_lock(month_ref: str, profile: str, locked: bool):
     conn.commit()
     conn.close()
 
+# =========================================================
+# INVESTIMENTOS
+# =========================================================
 def get_investment(month_ref: str, profile: str):
     conn = get_db()
     cur = conn.cursor()
@@ -992,6 +1187,9 @@ def get_total_investments(month_ref: str, profile: str) -> float:
     legacy_total = float(get_investment(month_ref, profile).get("amount", 0) or 0)
     return max(items_total, legacy_total)
 
+# =========================================================
+# DATE HELPERS
+# =========================================================
 def _month_ref_shift(month_ref: str, delta: int) -> str:
     y = int(month_ref[:4])
     m = int(month_ref[4:6])
@@ -1013,14 +1211,9 @@ def month_label_br(month_ref: str) -> str:
     m = int(month_ref[4:6])
     return f"{names[m-1]}/{y[2:]}"
 
-def month_name_pt(month_num: str) -> str:
-    names = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-    try:
-        m = int(month_num)
-        return names[m - 1]
-    except Exception:
-        return str(month_num)
-
+# =========================================================
+# OVERVIEW COMPUTES
+# =========================================================
 def compute_category_history(month_ref: str, mode: str, profile: str):
     refs = last_n_month_refs(month_ref, 12)
     cat_map = {}
@@ -1158,7 +1351,6 @@ def compute_individual(month_ref: str, profile: str):
     expenses_effective = house_total + my_personal_total + payable_total
     saldo_pos_pagamentos = income["total"] - expenses_effective
     saldo_em_conta = saldo_pos_pagamentos - invested
-
     invested_pct = invested / income["total"] if income["total"] > 0 else 0.0
 
     cats_house = sorted(house_by_cat.items(), key=lambda x: x[1], reverse=True)
@@ -1180,6 +1372,9 @@ def compute_individual(month_ref: str, profile: str):
         "cats_personal": cats_personal,
     }
 
+# =========================================================
+# SELECTORES DE MÊS / ANO
+# =========================================================
 def year_month_select_html(selected_year: str, selected_month: str):
     this_year = dt.date.today().year
     years = [str(y) for y in range(this_year - 2, this_year + 3)]
@@ -1196,29 +1391,49 @@ def year_month_select_html(selected_year: str, selected_month: str):
     return year_options, month_options
 
 def month_selector_block(selected_year: str, selected_month: str, action_url: str):
+    # AGORA MÊS PRIMEIRO, ANO DEPOIS
     year_options, month_options = year_month_select_html(selected_year, selected_month)
-    month_ref = month_ref_from(selected_year, selected_month)
+    competencia = competencia_label(selected_year, selected_month)
+
     return f"""
       <form method="get" action="{action_url}" id="monthForm">
         <div class="grid2">
           <div>
-            <label>Ano</label>
-            <select name="Ano" onchange="document.getElementById('monthForm').submit()">{year_options}</select>
-          </div>
-          <div>
             <label>Mês</label>
             <select name="Mes" onchange="document.getElementById('monthForm').submit()">{month_options}</select>
           </div>
+          <div>
+            <label>Ano</label>
+            <select name="Ano" onchange="document.getElementById('monthForm').submit()">{year_options}</select>
+          </div>
         </div>
         <div style="margin-top:10px;">
-          <span class="pill">Mês de referência: <b>{month_ref}</b></span>
+          <span class="pill">Mês de referência: <b>{competencia}</b></span>
         </div>
       </form>
     """
 
-def template_path():
-    return os.path.join(os.path.dirname(__file__), "assets", "Template_Casella.xlsx")
+# =========================================================
+# TEMPLATE PATH
+# =========================================================
+def find_template_file():
+    # busca robusta do template no repo
+    folder = os.path.join(BASE_DIR, "assets")
+    candidates = [
+        "Template_Casella.xlsx",
+        "template_finanças_caseia.xlsx",
+        "Template_Financas_Casella.xlsx",
+        "Template__Financas__Casella.xlsx",
+    ]
+    for c in candidates:
+        full = os.path.join(folder, c)
+        if os.path.exists(full):
+            return folder, c
+    return None, None
 
+# =========================================================
+# ROUTES
+# =========================================================
 @app.route("/")
 def home():
     profile = session.get("profile", "")
@@ -1238,8 +1453,8 @@ def home():
             <h1>Casella</h1>
             <p>Escolha o perfil para entrar.</p>
             <div class="grid2" style="margin-top:14px;">
-              <a class="btn btnPrimary btnLucas" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Lucas')}">Entrar como Lucas</a>
-              <a class="btn btnPrimary btnRafa" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Rafa')}">Entrar como Rafa</a>
+              <a class="btn btnLucas" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Lucas')}">Entrar como Lucas</a>
+              <a class="btn btnRafa" style="padding:18px 16px; font-size:16px;" href="{url_for('set_profile', profile='Rafa')}">Entrar como Rafa</a>
             </div>
           </div>
         </div>
@@ -1277,8 +1492,8 @@ def perfil():
             <h2>Perfil</h2>
             <p>Trocar perfil.</p>
             <div class="grid2" style="margin-top:14px;">
-              <a class="btn btnPrimary btnLucas" style="padding:16px;" href="{url_for('set_profile', profile='Lucas')}">Ir para Lucas</a>
-              <a class="btn btnPrimary btnRafa" style="padding:16px;" href="{url_for('set_profile', profile='Rafa')}">Ir para Rafa</a>
+              <a class="btn btnLucas" style="padding:16px;" href="{url_for('set_profile', profile='Lucas')}">Ir para Lucas</a>
+              <a class="btn btnRafa" style="padding:16px;" href="{url_for('set_profile', profile='Rafa')}">Ir para Rafa</a>
             </div>
             <div class="row" style="margin-top:12px;">
               <a class="btn btnGhost" href="{url_for('logout')}">Sair</a>
@@ -1297,19 +1512,9 @@ def logout():
 
 @app.route("/download-template")
 def download_template():
-    folder = os.path.join(os.path.dirname(__file__), "assets")
-    candidates = [
-        "Template_Casella.xlsx",
-        "template_finanças_caseia.xlsx",
-        "Template_Financas_Casella.xlsx",
-        "Template__Financas__Casella.xlsx",
-    ]
-    filename = ""
-    for c in candidates:
-        if os.path.exists(os.path.join(folder, c)):
-            filename = c
-            break
-    if not filename:
+    # agora busca de forma robusta a partir do diretório real do app
+    folder, filename = find_template_file()
+    if not folder or not filename:
         return "Template não encontrado em /assets. Suba o arquivo como Template_Casella.xlsx.", 404
     return send_from_directory(folder, filename, as_attachment=True)
 
@@ -1410,7 +1615,7 @@ def investimentos():
               <div class="row" style="margin-top:12px;">
                 <button class="btn btnPrimary" type="submit">Salvar</button>
                 <span class="pill">Valor da categoria: <b>{brl(valor)}</b></span>
-                <span class="pill">Mês anterior ({prev_ref}): <b>{brl(prev_valor)}</b></span>
+                <span class="pill">Mês anterior ({competencia_label(prev_ref[:4], prev_ref[4:6])}): <b>{brl(prev_valor)}</b></span>
                 <span class="pill">MoM%: <b>{mom_pct_text}</b></span>
                 <span class="pill">CtC (R$): <b>{brl(ctc_valor)}</b></span>
                 <span class="pill">Total consolidado do mês: <b>{brl(total_now)}</b></span>
@@ -1435,8 +1640,8 @@ def overview():
     month_ref = month_ref_from(selected_year, selected_month)
 
     mode = request.args.get("mode") or "casa"
-
     overview_error = ""
+
     try:
         casa = compute_casa(month_ref)
         ind = compute_individual(month_ref, profile)
@@ -1542,12 +1747,13 @@ def overview():
         if not inv_rows:
             inv_rows = "<tr><td colspan='2' class='small'>Sem dados de investimentos.</td></tr>"
         mom_txt = "N/A" if inv_hist["mom"] is None else f"{inv_hist['mom']:.2f}%"
+        prev_comp = competencia_label(inv_hist["prev_ref"][:4], inv_hist["prev_ref"][4:6]) if inv_hist["prev_ref"] else "-"
         detail_block = f"""
           <div class='card'>
             <h3>Investimentos por categoria</h3>
             <table><thead><tr><th>Categoria</th><th class='right'>Acumulado</th></tr></thead><tbody>{inv_rows}</tbody></table>
             <div class='row' style='margin-top:10px;'>
-              <span class='pill'>Mês anterior ({inv_hist['prev_ref']}): <b>{brl(inv_hist['prev_total'])}</b></span>
+              <span class='pill'>Mês anterior ({prev_comp}): <b>{brl(inv_hist['prev_total'])}</b></span>
               <span class='pill'>MoM%: <b>{mom_txt}</b></span>
               <span class='pill'>CtC (R$): <b>{brl(inv_hist['ctc'])}</b></span>
             </div>
@@ -1566,17 +1772,44 @@ def overview():
 
     DASHBOARD_CSS = """
     <style>
-      .darkBoard{background: radial-gradient(1200px 700px at 15% 0%, #1e3a8a55 0%, transparent 50%), linear-gradient(180deg, #0b1226 0%, #121a33 100%); color:#e5e7eb; border-radius:20px; border:1px solid rgba(148,163,184,.25); padding:16px;}
+      .darkBoard{
+        background: radial-gradient(1200px 700px at 15% 0%, #1e3a8a55 0%, transparent 50%), linear-gradient(180deg, #0b1226 0%, #121a33 100%);
+        color:#e5e7eb;
+        border-radius:20px;
+        border:1px solid rgba(148,163,184,.25);
+        padding:16px;
+      }
       .darkBoard h2,.darkBoard h3{color:#f8fafc}
       .darkGrid{display:grid; grid-template-columns:repeat(4,1fr); gap:12px;}
-      .darkKpi{padding:14px; border-radius:16px; border:1px solid rgba(148,163,184,.2); background:rgba(15,23,42,.55)}
+      .darkKpi{
+        padding:14px;
+        border-radius:16px;
+        border:1px solid rgba(148,163,184,.2);
+        background:rgba(15,23,42,.55)
+      }
       .darkKpi .label{font-size:12px; color:#93c5fd}
       .darkKpi .value{font-size:28px; font-weight:900; color:#fff}
-      .panel{padding:14px; border-radius:16px; border:1px solid rgba(148,163,184,.2); background:rgba(15,23,42,.45)}
+      .panel{
+        padding:14px;
+        border-radius:16px;
+        border:1px solid rgba(148,163,184,.2);
+        background:rgba(15,23,42,.45)
+      }
       .panelGrid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;}
       .catPick{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 0;}
-      .catPick label{font-weight:600; font-size:12px; color:#cbd5e1; display:inline-flex; align-items:center; gap:6px; margin:0}
-      @media (max-width: 900px){.darkGrid{grid-template-columns:1fr;} .panelGrid{grid-template-columns:1fr;}}
+      .catPick label{
+        font-weight:600;
+        font-size:12px;
+        color:#cbd5e1;
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        margin:0
+      }
+      @media (max-width: 900px){
+        .darkGrid{grid-template-columns:1fr;}
+        .panelGrid{grid-template-columns:1fr;}
+      }
     </style>
     """
 
@@ -1925,7 +2158,7 @@ def transacoes():
     rateio_opts = "".join([f"<option value='{k}'>{k}</option>" for k in ["60/40", "50/50", "100%_Meu", "100%_Outro"]])
     resp_opts = "".join([f"<option value='{r}' {'selected' if r == profile else ''}>{r}</option>" for r in ["Casa", "Lucas", "Rafa"]])
     year_options, month_options = year_month_select_html(selected_year, selected_month)
-    selected_month_name = month_name_pt(selected_month)
+    selected_competencia = competencia_label(selected_year, selected_month)
 
     err_block = f"<div class='card'><div class='errorBox'>{'<br/>'.join(errors)}</div></div>" if errors else ""
     info_block = f"<div class='card'><div class='{'okBox' if info_ok else 'errorBox'}'><b>{info}</b></div></div>" if info else ""
@@ -2009,6 +2242,7 @@ def transacoes():
               </div>
               <div>
                 <form method='get' action='{url_for('transacoes')}' id='monthFormTx' class='controlBar' style='justify-content:flex-end;'>
+                  <!-- AGORA MÊS PRIMEIRO -->
                   <select class='selectCompact' name='Mes' onchange="document.getElementById('monthFormTx').submit()">{month_options}</select>
                   <select class='selectCompact' name='Ano' onchange="document.getElementById('monthFormTx').submit()">{year_options}</select>
                 </form>
@@ -2017,7 +2251,7 @@ def transacoes():
                 </div>
               </div>
             </div>
-            <div class='row' style='margin-top:8px;'>{lock_banner}<span class='pill'>Referência: <b>{selected_month_name}/{selected_year}</b></span></div>
+            <div class='row' style='margin-top:8px;'>{lock_banner}<span class='pill'>Referência: <b>{selected_competencia}</b></span></div>
           </div>
 
           {err_block}
@@ -2083,7 +2317,6 @@ def transacoes():
           </div>
 
           {preview_table}
-
           {edit_form}
 
           <div class='card'>
@@ -2096,6 +2329,7 @@ def transacoes():
             </table>
           </div>
         </div>
+
         <script>
           const fileInput = document.getElementById('fileInput');
           const form = document.getElementById('excelForm');
